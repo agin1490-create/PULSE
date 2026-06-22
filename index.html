@@ -144,6 +144,8 @@
   .news .ntime{font-family:var(--mono);font-size:10px;color:var(--muted2);}
   .news .ntitle{font-size:14px;line-height:1.4;color:var(--text);}
   .news .votes{display:flex;gap:12px;margin-top:9px;font-family:var(--mono);font-size:11px;}
+  .ntags{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;}
+  .ctag{font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.5px;padding:2px 7px;border-radius:5px;border:1px solid var(--line);color:var(--muted);}
 
   .odds{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;}
   .odds .q{font-size:14px;line-height:1.4;margin-bottom:11px;}
@@ -295,8 +297,9 @@
       <div class="eyebrow">Setup analyser — structure &amp; confluence</div>
       <div class="chips" id="setupSyms"></div>
       <div class="chips" id="setupModes">
-        <div class="chip on" data-m="scalp">SCALP · 5m / 1h</div>
-        <div class="chip" data-m="intraday">INTRADAY · 15m / 4h</div>
+        <div class="chip" data-m="m1">SCALP · 1m</div>
+        <div class="chip on" data-m="m5">SCALP · 5m</div>
+        <div class="chip" data-m="m15">INTRADAY · 15m</div>
       </div>
       <div id="setupOut"></div>
     </section>
@@ -373,6 +376,7 @@ const CFG = {
 const state = {};
 SYMBOLS.forEach(s=>{
   state[s.id] = {
+    sym:s.sym,
     price:null, prevTick:null, chg24:0,
     priceBuf:[],            // {t, price} ring buffer for spike detection
     sparkBuf:[],            // recent prices for the sparkline
@@ -604,19 +608,33 @@ function renderTapeThrottled(){ if(tT)return; tT=setTimeout(()=>{tT=null; render
 /* ============================================================
    5. NEWS + ODDS (via optional proxy)
    ============================================================ */
+function moversStrip(){
+  const ranked=[...SYMBOLS].map(s=>({s,chg:state[s.id].chg24||0}))
+    .sort((a,b)=>b.chg-a.chg);
+  return `<div class="panel" style="margin-bottom:14px;">
+    <h4>Movers · 24h — who surged, who dumped</h4>
+    ${ranked.map(r=>`<div class="lvlrow">
+      <span class="lk"><span class="ctag" style="color:${r.s.color};border-color:${r.s.color}66">${r.s.sym}</span></span>
+      <span class="lv ${r.chg>=0?'up':'down'}">${r.chg>=0?'▲':'▼'} ${Math.abs(r.chg).toFixed(2)}%</span>
+    </div>`).join('')}
+  </div>`;
+}
+
 async function loadNews(){
   const el=document.getElementById('newsList');
-  if(!CFG.proxy){ el.innerHTML=proxyEmpty('News needs your data proxy','Headlines come from free sources (CryptoPanic, RSS) through the Worker. Add its URL in settings.'); return; }
-  el.innerHTML=`<div class="empty"><div class="ico">⏳</div><p>Loading headlines…</p></div>`;
+  const head=moversStrip();
+  if(!CFG.proxy){ el.innerHTML=head+proxyEmpty('Headlines need your proxy','The movers above are live with no setup. Deploy the Worker and paste its URL in settings to stream headlines too.'); return; }
+  el.innerHTML=head+`<div class="empty"><div class="ico">⏳</div><p>Loading headlines…</p></div>`;
   try{
     const r=await fetch(`${CFG.proxy}/news`); const items=await r.json();
-    el.innerHTML = (items||[]).slice(0,40).map(n=>`
+    const body=(items||[]).slice(0,40).map(n=>`
       <div class="news">
         <div class="nsrc"><span class="nsource">${n.source||'news'}</span><span class="ntime">${n.time||''}</span></div>
         <div class="ntitle">${n.title||''}</div>
-        ${n.bullish!=null?`<div class="votes"><span class="up">▲ ${n.bullish||0}</span><span class="down">▼ ${n.bearish||0}</span></div>`:''}
-      </div>`).join('') || proxyEmpty('No headlines','The proxy returned nothing. Check the Worker logs.');
-  }catch(e){ el.innerHTML=proxyEmpty('Couldn’t reach the proxy',`Tried ${CFG.proxy}/news. Confirm the URL and that the Worker is deployed.`); }
+        ${(n.coins&&n.coins.length)?`<div class="ntags">${n.coins.map(c=>`<span class="ctag">${c}</span>`).join('')}</div>`:''}
+      </div>`).join('');
+    el.innerHTML=head+(body||proxyEmpty('No headlines','The proxy returned nothing. Check the Worker logs.'));
+  }catch(e){ el.innerHTML=head+proxyEmpty('Couldn’t reach the proxy',`Tried ${CFG.proxy}/news. Confirm the URL and that the Worker is deployed.`); }
 }
 async function loadOdds(){
   const el=document.getElementById('oddsList');
@@ -693,10 +711,11 @@ setInterval(()=>{ if(document.getElementById('v-flow').classList.contains('activ
    pattern when it fires AT a level, scores confluence, and gates
    the verdict on the 70% confidence rule.
    ============================================================ */
-const SETUP = { sym:'btcusdt', mode:'scalp', built:false };
+const SETUP = { sym:'btcusdt', mode:'m5', built:false };
 const MODES = {
-  scalp:    { exec:'5m',  ctx:'1h' },
-  intraday: { exec:'15m', ctx:'4h' },
+  m1:  { exec:'1m',  ctx:'15m' },
+  m5:  { exec:'5m',  ctx:'1h'  },
+  m15: { exec:'15m', ctx:'4h'  },
 };
 
 async function klines(sym, interval, limit=150){
@@ -799,7 +818,7 @@ function renderSetup(a){
   const out=document.getElementById('setupOut');
   const meets = a.dir && a.score>=70 && a.rr!=null && a.rr>=1.5;
   const biasCls = !a.dir?'bias-none':a.dir==='long'?'bias-long':'bias-short';
-  const biasTxt = !a.dir?'NO CLEAN SETUP':a.dir.toUpperCase();
+  const biasTxt = !a.dir?'NO CLEAN SETUP':a.dir==='long'?'BUY / LONG':'SELL / SHORT';
   const circ=2*Math.PI*32, off=circ*(1-a.score/100);
   const ringCol = a.score>=70?'var(--green)':a.score>=45?'var(--amber)':'var(--muted2)';
 
