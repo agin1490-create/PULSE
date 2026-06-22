@@ -212,6 +212,11 @@
   .verdict{border-radius:18px;padding:18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;border:1px solid var(--line);}
   .verdict.go{background:linear-gradient(135deg,#00E08A18,var(--surface));border-color:#00E08A55;}
   .verdict.no{background:var(--surface);}
+  .verdict.cap{background:linear-gradient(135deg,#FFB02018,var(--surface));border-color:#FFB02055;}
+  .catalyst{background:linear-gradient(135deg,#FF4D6D18,var(--surface));border:1px solid #FF4D6D66;border-radius:16px;padding:14px 16px;margin-bottom:12px;}
+  .catalyst .ctitle{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--amber);margin-bottom:6px;}
+  .catalyst .cbody{font-size:12px;color:#C8C8D2;line-height:1.5;}
+  .newsclear{font-family:var(--mono);font-size:11px;color:var(--green);opacity:.7;margin-bottom:12px;padding-left:2px;}
   .ring{flex:0 0 auto;width:74px;height:74px;position:relative;}
   .ring svg{transform:rotate(-90deg);} 
   .ring .score{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);font-size:20px;font-weight:700;}
@@ -783,6 +788,33 @@ function atr(c,n=14){
   return cnt?sum/cnt:0;
 }
 
+function ageMins(t){
+  if(!t) return 9999;
+  const m=String(t).match(/^(\d+)\s*([smhd])$/);
+  if(!m) return 9999;
+  const n=+m[1], u=m[2];
+  return u==='s'?n/60 : u==='m'?n : u==='h'?n*60 : n*1440;
+}
+
+// News-as-veto: returns the freshest catalyst affecting this coin, or null.
+// Never sets direction — only used to cap confluence and warn.
+async function getCatalyst(symId){
+  if(!CFG.proxy) return null;
+  const sym = state[symId].sym;
+  const MACRO=/\bfed\b|fomc|\bcpi\b|\bppi\b|rate (cut|hike|decision)|interest rate|inflation|\bsec\b|\betf\b|jobs report|nonfarm|recession|tariff/i;
+  try{
+    const r=await fetch(`${CFG.proxy}/news`);
+    const items=await r.json();
+    for(const n of (items||[])){             // worker returns newest-first
+      if(ageMins(n.time) > 30) continue;
+      const coinHit=(n.coins||[]).includes(sym);
+      const macroHit=MACRO.test(n.title||'');
+      if(coinHit||macroHit) return {headline:n.title, source:n.source, age:n.time, kind:macroHit?'MACRO':'COIN', sym};
+    }
+  }catch(e){}
+  return null;
+}
+
 function analyze(execC,ctxC,sym){
   const price=execC[execC.length-1].c;
   const swE=swings(execC), swC=swings(ctxC);
@@ -849,14 +881,23 @@ function renderSetup(a){
   const circ=2*Math.PI*32, off=circ*(1-a.score/100);
   const ringCol = a.score>=70?'var(--green)':a.score>=45?'var(--amber)':'var(--muted2)';
 
-  const verdict = meets
-    ? `<b style="color:var(--green)">SETUP — meets your 70% filter.</b> Confirm the trigger candle closes, then size per your risk.`
-    : a.dir
-      ? `<b>STAND DOWN.</b> Confluence ${a.score}/100${a.rr!=null?`, R:R ${a.rr.toFixed(2)}`:''}. Below your 70% threshold — wait for a cleaner read.`
-      : `<b>STAND DOWN.</b> No structured setup right now — price isn't at a level with confirmation.`;
+  const verdict = a.capped
+    ? `<b style="color:var(--amber)">STAND ASIDE.</b> Live catalyst — confluence capped to ${a.score}. Don't scalp into event risk.`
+    : meets
+      ? `<b style="color:var(--green)">SETUP — meets your 70% filter.</b> Confirm the trigger candle closes, then size per your risk.`
+      : a.dir
+        ? `<b>STAND DOWN.</b> Confluence ${a.score}/100${a.rr!=null?`, R:R ${a.rr.toFixed(2)}`:''}. Below your 70% threshold — wait for a cleaner read.`
+        : `<b>STAND DOWN.</b> No structured setup right now — price isn't at a level with confirmation.`;
+
+  const catalystBanner = a.catalyst ? `
+    <div class="catalyst">
+      <div class="ctitle">⚠ ${a.catalyst.kind==='MACRO'?'MACRO CATALYST LIVE':a.catalyst.sym+' HEADLINE LIVE'} · ${a.catalyst.age} ago</div>
+      <div class="cbody">“${a.catalyst.headline}” — ${a.catalyst.source}. Event risk overrides the technical read. News doesn't tell you which way — only that the tape is about to get unpredictable. Stand aside or cut size.</div>
+    </div>` : (CFG.proxy ? `<div class="newsclear">✓ News scan clear — no live catalyst on ${state[SETUP.sym].sym} in the last 30 min</div>` : '');
 
   out.innerHTML = `
-    <div class="verdict ${meets?'go':'no'}">
+    ${catalystBanner}
+    <div class="verdict ${a.capped?'cap':meets?'go':'no'}">
       <div class="ring">
         <svg width="74" height="74"><circle cx="37" cy="37" r="32" stroke="var(--line)" stroke-width="6" fill="none"/>
         <circle cx="37" cy="37" r="32" stroke="${ringCol}" stroke-width="6" fill="none" stroke-linecap="round"
@@ -929,7 +970,10 @@ async function runSetup(){
   try{
     const m=MODES[SETUP.mode];
     const [execC,ctxC]=await Promise.all([klines(SETUP.sym,m.exec),klines(SETUP.sym,m.ctx)]);
-    renderSetup(analyze(execC,ctxC,SETUP.sym));
+    const a=analyze(execC,ctxC,SETUP.sym);
+    a.catalyst=await getCatalyst(SETUP.sym);
+    if(a.catalyst){ a.rawScore=a.score; a.score=Math.min(a.score,55); a.capped=true; }
+    renderSetup(a);
   }catch(e){
     out.innerHTML=`<div class="empty"><div class="ico">⚠️</div><h3>Couldn’t load candles</h3><p>Binance REST may be blocked on this network. Try Wi-Fi, or tell me to switch the data source to Bybit.</p></div>`;
   }
