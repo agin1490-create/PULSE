@@ -106,6 +106,13 @@
   .b-trend{background:#3B9EFF1f;color:var(--blue);}
   .b-squeeze{background:#FFB0201f;color:var(--amber);}
   .b-expansion{background:#FF4D6D1f;color:var(--red);}
+  .bookwrap{margin-top:12px;}
+  .bookhead{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;letter-spacing:.5px;margin-bottom:6px;}
+  .bookhead .k{color:var(--muted);text-transform:uppercase;}
+  .bookbar{height:7px;border-radius:4px;overflow:hidden;display:flex;background:var(--bg);}
+  .bookbar .bb-bid{background:var(--green);opacity:.85;}
+  .bookbar .bb-ask{background:var(--red);opacity:.85;}
+  .bookmeta{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-top:5px;}
 
   /* ---- Filter chips ---- */
   .chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 0 14px;padding-bottom:2px;}
@@ -387,6 +394,7 @@ SYMBOLS.forEach(s=>{
     sparkBuf:[],            // recent prices for the sparkline
     cvd:0,                  // cumulative volume delta (session)
     cvdWindow:[],           // {t, signedQty} rolling 10s window
+    book:null,              // {bidVol, askVol, imb, maxBid, maxAsk} resting-book snapshot
     regime:'TREND',
     lastSpike:0, lastCvd:0, lastRegime:0,  // cooldown timestamps
   };
@@ -420,7 +428,10 @@ async function seedKlines(){
    ============================================================ */
 let ws, reconnectT;
 function connectWS(){
-  const streams = SYMBOLS.map(s=>`${s.id}@aggTrade`).concat(SYMBOLS.map(s=>`${s.id}@ticker`)).join('/');
+  const streams = SYMBOLS.map(s=>`${s.id}@aggTrade`)
+    .concat(SYMBOLS.map(s=>`${s.id}@ticker`))
+    .concat(SYMBOLS.map(s=>`${s.id}@depth20@1000ms`))   // resting order book, top 20, 1/sec
+    .join('/');
   ws = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${streams}`);
 
   ws.onopen = ()=> setStatus('live','live');
@@ -430,12 +441,25 @@ function connectWS(){
   ws.onmessage = ev=>{
     let msg; try{ msg=JSON.parse(ev.data); }catch(e){ return; }
     const d = msg.data; if(!d) return;
-    const id = (d.s||'').toLowerCase();
+    const stream = msg.stream||'';
+    const id = stream.split('@')[0];     // depth streams carry no symbol in payload
     if(!state[id]) return;
 
-    if(d.e === 'aggTrade')      handleTrade(id, d);
-    else if(d.e === '24hrTicker') handleTicker(id, d);
+    if(stream.includes('@aggTrade'))   handleTrade(id, d);
+    else if(stream.includes('@ticker')) handleTicker(id, d);
+    else if(stream.includes('@depth'))  handleDepth(id, d);
   };
+}
+
+function handleDepth(id, d){
+  if(!d.bids || !d.asks) return;
+  const st = state[id];
+  let bidVol=0, askVol=0, maxBid={p:0,q:0,n:0}, maxAsk={p:0,q:0,n:0};
+  for(const [p,q] of d.bids){ const px=+p,qty=+q,n=px*qty; bidVol+=n; if(n>maxBid.n) maxBid={p:px,q:qty,n}; }
+  for(const [p,q] of d.asks){ const px=+p,qty=+q,n=px*qty; askVol+=n; if(n>maxAsk.n) maxAsk={p:px,q:qty,n}; }
+  const total=bidVol+askVol;
+  st.book = { bidVol, askVol, imb: total>0?(bidVol-askVol)/total:0, maxBid, maxAsk, ts:Date.now() };
+  renderMarketsThrottled();
 }
 
 function handleTicker(id, d){
@@ -586,8 +610,24 @@ function renderMarkets(){
         <div class="metric"><div class="k">Delta 10s</div><div class="v ${dUp?'up':'down'}">${netDelta>=0?'+':'-'}${fmtUSD(netDelta)}</div></div>
         <div class="metric"><div class="k">CVD</div><div class="v ${st.cvd>=0?'up':'down'}">${st.cvd>=0?'+':'-'}${fmtUSD(st.cvd)}</div></div>
       </div>
+      ${bookBar(st)}
     </div>`;
   }).join('');
+}
+
+function bookBar(st){
+  if(!st.book) return '';
+  const b=st.book, tot=b.bidVol+b.askVol;
+  if(tot<=0) return '';
+  const bidPct=Math.round(b.bidVol/tot*100), askPct=100-bidPct;
+  const skew=Math.round(b.imb*100);
+  const lean = skew>8?'bid-heavy':skew<-8?'ask-heavy':'balanced';
+  const leanCls = skew>8?'up':skew<-8?'down':'';
+  return `<div class="bookwrap">
+    <div class="bookhead"><span class="k">Resting book · 20 levels</span><span class="${leanCls}">${lean} ${skew>=0?'+':''}${skew}</span></div>
+    <div class="bookbar"><div class="bb-bid" style="width:${bidPct}%"></div><div class="bb-ask" style="width:${askPct}%"></div></div>
+    <div class="bookmeta"><span class="up">${fmtUSD(b.bidVol)} bid</span><span class="down">ask ${fmtUSD(b.askVol)}</span></div>
+  </div>`;
 }
 
 function renderAlerts(){
@@ -827,13 +867,13 @@ function analyze(execC,ctxC,sym){
   const nearRes=lvl.res && Math.abs(price-lvl.res.mid)/price<0.004;
 
   let score=0; const parts=[];
-  if((dir==='long'&&trendC==='UP')||(dir==='short'&&trendC==='DOWN')){score+=25;parts.push(['Higher-TF trend aligned',25,25]);}
-  else if(trendC==='RANGE'){score+=10;parts.push(['Higher-TF ranging',10,25]);}
-  else parts.push(['Against higher-TF trend',0,25]);
+  if((dir==='long'&&trendC==='UP')||(dir==='short'&&trendC==='DOWN')){score+=20;parts.push(['Higher-TF trend aligned',20,20]);}
+  else if(trendC==='RANGE'){score+=8;parts.push(['Higher-TF ranging',8,20]);}
+  else parts.push(['Against higher-TF trend',0,20]);
 
-  if(dir==='long'&&nearSup){score+=25;parts.push(['Price at support',25,25]);}
-  else if(dir==='short'&&nearRes){score+=25;parts.push(['Price at resistance',25,25]);}
-  else parts.push(['Not at a key level',0,25]);
+  if(dir==='long'&&nearSup){score+=20;parts.push(['Price at support',20,20]);}
+  else if(dir==='short'&&nearRes){score+=20;parts.push(['Price at resistance',20,20]);}
+  else parts.push(['Not at a key level',0,20]);
 
   if(pat && ((pat.dir==='long'&&nearSup)||(pat.dir==='short'&&nearRes))){score+=20;parts.push([pat.name+' at level',20,20]);}
   else if(pat){score+=8;parts.push([pat.name+' (mid-range)',8,20]);}
@@ -843,8 +883,19 @@ function analyze(execC,ctxC,sym){
   else if(flow==='flat'){score+=5;parts.push(['Flow neutral',5,15]);}
   else parts.push(['Flow against',0,15]);
 
-  if((dir==='long'&&trendE==='UP')||(dir==='short'&&trendE==='DOWN')){score+=15;parts.push(['Exec-TF structure agrees',15,15]);}
-  else parts.push(['Exec-TF structure mixed',0,15]);
+  // resting order-book backing (institutional footprint behind price)
+  const book = state[sym] && state[sym].book;
+  if(dir && book){
+    const imb=book.imb;
+    const backs=(dir==='long'&&imb>0.12)||(dir==='short'&&imb<-0.12);
+    const against=(dir==='long'&&imb<-0.12)||(dir==='short'&&imb>0.12);
+    if(backs){score+=15;parts.push(['Resting book backs '+(dir==='long'?'bids':'asks'),15,15]);}
+    else if(against){parts.push(['Book leans against',0,15]);}
+    else {score+=6;parts.push(['Book balanced',6,15]);}
+  } else { score+=6; parts.push(['Book data loading',6,15]); }
+
+  if((dir==='long'&&trendE==='UP')||(dir==='short'&&trendE==='DOWN')){score+=10;parts.push(['Exec-TF structure agrees',10,10]);}
+  else parts.push(['Exec-TF structure mixed',0,10]);
 
   // ---- Trade plan: stops & targets scaled to this timeframe's volatility (ATR) ----
   const a = atr(execC);                    // typical candle size on the exec timeframe
@@ -924,6 +975,7 @@ function renderSetup(a){
       <div class="lvlrow"><span class="lk">Higher-TF trend</span><span class="lv">${a.trendC}</span></div>
       <div class="lvlrow"><span class="lk">Exec-TF trend</span><span class="lv">${a.trendE}</span></div>
       <div class="lvlrow"><span class="lk">Flow (CVD)</span><span class="lv ${a.flow==='long'?'up':a.flow==='short'?'down':''}">${a.flow.toUpperCase()}</span></div>
+      <div class="lvlrow"><span class="lk">Resting book</span><span class="lv ${(()=>{const b=state[SETUP.sym].book;return b?(b.imb>0.08?'up':b.imb<-0.08?'down':''):'';})()}">${(()=>{const b=state[SETUP.sym].book;return b?(b.imb>0.08?'BID-HEAVY':b.imb<-0.08?'ASK-HEAVY':'BALANCED')+' '+(b.imb>=0?'+':'')+Math.round(b.imb*100):'—';})()}</span></div>
       <div class="lvlrow"><span class="lk">Nearest resistance</span><span class="lv">${a.lvl.res?fmt(a.lvl.res.mid):'—'}</span></div>
       <div class="lvlrow"><span class="lk">Last price</span><span class="lv">${fmt(a.price)}</span></div>
       <div class="lvlrow"><span class="lk">Nearest support</span><span class="lv">${a.lvl.sup?fmt(a.lvl.sup.mid):'—'}</span></div>
