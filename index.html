@@ -710,10 +710,48 @@ async function loadOdds(){
 }
 function proxyEmpty(h,p){ return `<div class="empty"><div class="ico">🔌</div><h3>${h}</h3><p>${p}</p><button class="cta" onclick="openSheet()">Open settings</button></div>`; }
 
+// ---- Market session detection from real exchange hours (DST-safe via IANA tz) ----
+const SESSIONS = {
+  'S&P 500':    {tz:'America/New_York', win:[[570,960]]},            // 09:30–16:00
+  'Nasdaq':     {tz:'America/New_York', win:[[570,960]]},
+  'FTSE 100':   {tz:'Europe/London',    win:[[480,990]]},            // 08:00–16:30
+  'DAX':        {tz:'Europe/Berlin',    win:[[540,1050]]},           // 09:00–17:30
+  'Nikkei 225': {tz:'Asia/Tokyo',       win:[[540,690],[750,900]]},  // 09:00–11:30, 12:30–15:00
+  'Hang Seng':  {tz:'Asia/Hong_Kong',   win:[[570,720],[780,960]]},  // 09:30–12:00, 13:00–16:00
+};
+function localParts(tz){
+  const p=new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());
+  const g=t=>p.find(x=>x.type===t)?.value;
+  let hh=+g('hour'); if(hh===24) hh=0;
+  return {wd:g('weekday'), mins:hh*60+(+g('minute'))};
+}
+function cashOpen(cfg){
+  const {wd,mins}=localParts(cfg.tz);
+  if(wd==='Sat'||wd==='Sun') return false;
+  return cfg.win.some(([a,b])=>mins>=a && mins<b);
+}
+function futuresOpen(){               // CME E-mini: Sun 18:00 ET → Fri 17:00 ET, daily 17:00–18:00 halt
+  const {wd,mins}=localParts('America/New_York');
+  if(wd==='Sat') return false;
+  if(wd==='Sun') return mins>=1080;
+  if(wd==='Fri') return mins<1020;
+  return !(mins>=1020 && mins<1080);
+}
+function sessionStatus(name){
+  if(/Fut$/.test(name)) return futuresOpen()?'OPEN':'CLOSED';
+  const cfg=SESSIONS[name];
+  return cfg ? (cashOpen(cfg)?'OPEN':'CLOSED') : '';
+}
+function sessionHeader(){
+  const us=cashOpen(SESSIONS['S&P 500']);
+  const eu=cashOpen(SESSIONS['DAX'])||cashOpen(SESSIONS['FTSE 100']);
+  const asia=cashOpen(SESSIONS['Nikkei 225'])||cashOpen(SESSIONS['Hang Seng']);
+  const live=[]; if(asia)live.push('Asia'); if(eu)live.push('Europe'); if(us)live.push('US');
+  return live.length ? `In session now: ${live.join(' · ')}` : 'All cash markets closed — futures only';
+}
 function mstate(s){
-  const open = s==='REGULAR';
-  const label = s==='REGULAR'?'OPEN':s==='PRE'?'PRE':s==='POST'?'POST':s==='CLOSED'?'CLOSED':'—';
-  return `<span class="mstate ${open?'mopen':''}">${label}</span>`;
+  const open=s==='OPEN';
+  return `<span class="mstate ${open?'mopen':''}">${s||'—'}</span>`;
 }
 async function loadWorld(){
   const el=document.getElementById('worldList');
@@ -722,17 +760,18 @@ async function loadWorld(){
   try{
     const r=await fetch(`${CFG.proxy}/markets`); const items=await r.json();
     el.dataset.loaded='1';
-    el.innerHTML=`<div class="panel"><h4>Global indices · risk read</h4>
+    el.innerHTML=`<div class="newsclear" style="color:var(--blue);opacity:.85">◐ ${sessionHeader()}</div>
+    <div class="panel"><h4>Global indices · risk read</h4>
       ${(items||[]).map(m=>{
         if(!m.ok) return `<div class="lvlrow"><span class="lk">${m.name} <span style="color:var(--muted2);font-size:11px">· ${m.city}</span></span><span class="lv" style="color:var(--muted2)">—</span></div>`;
         const up=m.chg>=0;
         return `<div class="lvlrow">
-          <span class="lk">${m.name}<span style="color:var(--muted2);font-size:11px"> · ${m.city}</span>${mstate(m.state)}</span>
+          <span class="lk">${m.name}<span style="color:var(--muted2);font-size:11px"> · ${m.city}</span>${mstate(sessionStatus(m.name))}</span>
           <span class="lv ${up?'up':'down'}">${up?'▲':'▼'} ${Math.abs(m.chg).toFixed(2)}%</span>
         </div>`;
       }).join('')}
     </div>
-    <p class="disclaim" style="text-align:left">Snapshot · ~1 min refresh. Futures run nearly 24h — your overnight risk read; cash indices only move during their own session. When US futures bleed, crypto often leans the same way.</p>`;
+    <p class="disclaim" style="text-align:left">Snapshot · ~1 min refresh. A CLOSED index shows its last-session close, not a live move — futures stay OPEN nearly 24h and are your overnight risk read. When US futures bleed, crypto often leans the same way.</p>`;
   }catch(e){ el.innerHTML=proxyEmpty('Couldn’t reach the proxy',`Tried ${CFG.proxy}/markets. Confirm the Worker is redeployed with the /markets route.`); }
 }
 
