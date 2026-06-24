@@ -182,7 +182,7 @@
   .navbtn{
     background:none;border:none;color:var(--muted2);cursor:pointer;
     display:flex;flex-direction:column;align-items:center;gap:3px;
-    font-family:var(--mono);font-size:9px;letter-spacing:.3px;padding:6px 9px;border-radius:10px;transition:.15s;
+    font-family:var(--mono);font-size:8px;letter-spacing:.2px;padding:6px 6px;border-radius:10px;transition:.15s;
   }
   .navbtn svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;}
   .navbtn.on{color:var(--accent);}
@@ -224,6 +224,8 @@
   .catalyst .ctitle{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--amber);margin-bottom:6px;}
   .catalyst .cbody{font-size:12px;color:#C8C8D2;line-height:1.5;}
   .newsclear{font-family:var(--mono);font-size:11px;color:var(--green);opacity:.7;margin-bottom:12px;padding-left:2px;}
+  .mstate{font-family:var(--mono);font-size:8px;letter-spacing:.5px;padding:1px 6px;border-radius:5px;background:#7A7A8822;color:var(--muted);margin-left:6px;}
+  .mstate.mopen{background:#00E08A1f;color:var(--green);}
   .ring{flex:0 0 auto;width:74px;height:74px;position:relative;}
   .ring svg{transform:rotate(-90deg);} 
   .ring .score{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);font-size:20px;font-weight:700;}
@@ -315,6 +317,12 @@
       </div>
       <div id="setupOut"></div>
     </section>
+
+    <!-- WORLD -->
+    <section class="view" id="v-world">
+      <div class="eyebrow">World markets — global risk read</div>
+      <div id="worldList"></div>
+    </section>
   </div>
 
   <nav class="nav">
@@ -333,6 +341,9 @@
     </button>
     <button class="navbtn" data-v="setup">
       <svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 9-9M21 7v5M21 7h-5"/></svg>SETUP
+    </button>
+    <button class="navbtn" data-v="world">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/></svg>WORLD
     </button>
   </nav>
 </div>
@@ -699,6 +710,32 @@ async function loadOdds(){
 }
 function proxyEmpty(h,p){ return `<div class="empty"><div class="ico">🔌</div><h3>${h}</h3><p>${p}</p><button class="cta" onclick="openSheet()">Open settings</button></div>`; }
 
+function mstate(s){
+  const open = s==='REGULAR';
+  const label = s==='REGULAR'?'OPEN':s==='PRE'?'PRE':s==='POST'?'POST':s==='CLOSED'?'CLOSED':'—';
+  return `<span class="mstate ${open?'mopen':''}">${label}</span>`;
+}
+async function loadWorld(){
+  const el=document.getElementById('worldList');
+  if(!CFG.proxy){ el.innerHTML=proxyEmpty('World markets need your proxy','Index data is exchange-licensed, so it routes through your Worker. Add its URL in settings — and make sure the Worker is redeployed with the /markets route.'); return; }
+  if(!el.dataset.loaded) el.innerHTML=`<div class="empty"><div class="ico">🌐</div><p>Loading world markets…</p></div>`;
+  try{
+    const r=await fetch(`${CFG.proxy}/markets`); const items=await r.json();
+    el.dataset.loaded='1';
+    el.innerHTML=`<div class="panel"><h4>Global indices · risk read</h4>
+      ${(items||[]).map(m=>{
+        if(!m.ok) return `<div class="lvlrow"><span class="lk">${m.name} <span style="color:var(--muted2);font-size:11px">· ${m.city}</span></span><span class="lv" style="color:var(--muted2)">—</span></div>`;
+        const up=m.chg>=0;
+        return `<div class="lvlrow">
+          <span class="lk">${m.name}<span style="color:var(--muted2);font-size:11px"> · ${m.city}</span>${mstate(m.state)}</span>
+          <span class="lv ${up?'up':'down'}">${up?'▲':'▼'} ${Math.abs(m.chg).toFixed(2)}%</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <p class="disclaim" style="text-align:left">Snapshot · ~1 min refresh. Futures run nearly 24h — your overnight risk read; cash indices only move during their own session. When US futures bleed, crypto often leans the same way.</p>`;
+  }catch(e){ el.innerHTML=proxyEmpty('Couldn’t reach the proxy',`Tried ${CFG.proxy}/markets. Confirm the Worker is redeployed with the /markets route.`); }
+}
+
 /* ============================================================
    6. UI WIRING
    ============================================================ */
@@ -717,6 +754,7 @@ document.querySelectorAll('.navbtn').forEach(b=>{
     if(v==='odds') loadOdds();
     if(v==='markets') renderMarkets();
     if(v==='setup') runSetup();
+    if(v==='world') loadWorld();
   });
 });
 document.querySelectorAll('#flowChips .chip').forEach(c=>{
@@ -749,6 +787,7 @@ document.getElementById('saveBtn').addEventListener('click',()=>{
 
 /* refresh relative times */
 setInterval(()=>{ if(document.getElementById('v-flow').classList.contains('active')) renderAlerts(); },10000);
+setInterval(()=>{ if(document.getElementById('v-world').classList.contains('active')) loadWorld(); },60000);
 
 /* ============================================================
    7. SETUP ANALYSER — structure + confluence (an aid, not a predictor)
