@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#08080B" />
+<title>PULSE — Precision Terminal · BTC · ETH · XAU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#08080B; --surface:#121218; --elev:#1A1A22; --line:#26262F;
+    --accent:#7C5CFF; --accent-dim:#7C5CFF22;
+    --green:#00E08A; --red:#FF4D6D; --amber:#FFB020; --blue:#3B9EFF;
+    --text:#ECECF1; --muted:#7A7A88; --muted2:#4A4A56;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --disp:'Space Grotesk',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    --safe-top:env(safe-area-inset-top,0px); --safe-bot:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{background:var(--bg);color:var(--text);font-family:var(--disp);overscroll-behavior:none;-webkit-font-smoothing:antialiased;user-select:none;}
+  #app{max-width:480px;margin:0 auto;height:100dvh;display:flex;flex-direction:column;position:relative;background:radial-gradient(120% 60% at 50% -10%, #16121f 0%, var(--bg) 55%);}
+  .topbar{padding:calc(var(--safe-top) + 14px) 18px 12px;display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#B89BFF);display:grid;place-items:center;font-weight:700;font-size:15px;color:#fff;box-shadow:0 0 18px var(--accent-dim);}
+  .brand h1{font-size:17px;font-weight:600;letter-spacing:.5px;margin:0;}
+  .brand .sub{font-size:10px;color:var(--muted);letter-spacing:1.6px;text-transform:uppercase;margin-top:1px;}
+  .status{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;color:var(--muted);}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted2);}
+  .dot.live{background:var(--green);box-shadow:0 0 10px var(--green);animation:pulse 2s infinite;}
+  .dot.err{background:var(--red);box-shadow:0 0 10px var(--red);}
+  .dot.warn{background:var(--amber);box-shadow:0 0 10px var(--amber);}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .gear{background:none;border:none;color:var(--muted);font-size:18px;padding:6px;cursor:pointer;}
+  .tape{flex:0 0 auto;display:flex;gap:18px;overflow-x:auto;scrollbar-width:none;padding:6px 18px 12px;border-bottom:1px solid var(--line);}
+  .tape::-webkit-scrollbar{display:none;}
+  .tape-item{flex:0 0 auto;display:flex;flex-direction:column;gap:1px;}
+  .tape-sym{font-size:10px;color:var(--muted);letter-spacing:1px;}
+  .tape-px{font-family:var(--mono);font-size:13px;font-weight:500;}
+  .tape-chg{font-family:var(--mono);font-size:10px;}
+  .up{color:var(--green);} .down{color:var(--red);}
+  .body{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px 90px;scrollbar-width:none;}
+  .body::-webkit-scrollbar{display:none;}
+  .view{display:none;} .view.active{display:block;animation:fade .25s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .eyebrow{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin:2px 4px 12px;}
+  .mcard,.sigcard,.panel,.alert,.news,.jcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px;}
+  .mcard .row1,.srow,.jhead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  .name{display:flex;align-items:center;gap:10px;}
+  .coin{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font-weight:700;font-size:13px;}
+  .sym{font-size:15
+... 
