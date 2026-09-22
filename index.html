@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>PULSE PRO</title>
+<meta name="theme-color" content="#0b0c0e"/>
+<style>
+:root{--bg:#0b0c0e;--sf:#121317;--el:#181a1f;--fg:#ecece8;--mu:#8b8d93;--su:#5c5e66;--up:#8fbf9a;--dn:#d08989;--wn:#c4b184;--ac:#d5d7dc}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.w{max-width:430px;margin:0 auto;min-height:100dvh;padding:16px 18px 92px;padding-top:16px}
+.mo{font-family:ui-monospace,Menlo,monospace}
+.hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+h1{font-size:22px;font-weight:600;margin:2px 0 0}
+.k{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--mu);margin:0}
+.tape{display:flex;gap:8px;overflow:auto;padding-bottom:12px;scrollbar-width:none}
+.ch,.cd,.th{background:var(--sf);border-radius:18px;padding:12px 14px;box-shadow:0 0 0 1px #ffffff14}
+.ch{min-width:112px}.cd{border-radius:22px;padding:16px;margin-bottom:10px}.th{margin-bottom:8px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.nav{position:fixed;left:0;right:0;bottom:0;max-width:430px;margin:0 auto;background:#0b0c0ef0;border-top:1px solid #ffffff14;padding:8px 10px 10px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.nav button{min-height:44px;border-radius:12px;font-size:11px;color:var(--mu)}.nav button.on{background:var(--el);color:var(--fg)}
+.se{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--mu);margin:16px 0 8px}
+.mu{color:var(--mu)}.su{color:var(--su)}.up{color:var(--up)}.dn{color:var(--dn)}
+.rw{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bt{min-height:44px;width:100%;border-radius:14px;background:var(--ac);color:#0b0c0e;font-size:13px;font-weight:600;margin-top:10px}
+.sg{display:flex;gap:8px;margin-bottom:10px}.sg button{min-height:38px;border-radius:999px;padding:0 14px;font-size:12px;color:var(--mu);box-shadow:0 0 0 1px #ffffff14}.sg button.on{background:var(--ac);color:#0b0c0e}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.st{background:#0b0c0e;border-radius:12px;padding:8px;box-shadow:0 0 0 1px #ffffff10}.st .a{font-size:9px;color:var(--mu)}.st .b{font-size:13px;margin-top:2px}
+.pi{border-radius:10px;padding:4px 10px;font-size:11px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="w">
+  <div class="hd">
+    <div><p class="k mo">Terminal</p><h1>PULSE PRO</h1></div>
+    <div class="mo" style="font-size:10px;color:var(--mu)"><span class="dot" id="dot"></span> <span id="feed">boot</span></div>
+  </div>
+  <div class="tape" id="tape"></div>
+  <div id="view"><p class="mu">Loading...</p></div>
+</div>
+<nav class="nav">
+  <button class="on" data-t="desk">Desk</button>
+  <button data-t="setup">Setup</button>
+  <button data-t="log">Log</button>
+</nav>
+<script src="app.js"></script>
+</body>
+</html>
