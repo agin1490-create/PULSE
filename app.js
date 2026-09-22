@@ -13,7 +13,7 @@ async function yq(sym){
   var u="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(sym)+"?interval=1m&range=1d";
   var j=await get(u,6000);
   if(!j||!j.chart){
-    var wrap=await get("https://api.allorigins.win/get?url="+encodeURIComponent(u),10000);
+    var wrap=await get("https://api.allorigins.win/get?url="+encodeURIComponent(u),8000);
     if(wrap&&wrap.contents){try{j=JSON.parse(wrap.contents);}catch(e){j=null;}}
   }
   var res=j&&j.chart&&j.chart.result&&j.chart.result[0];
@@ -21,6 +21,13 @@ async function yq(sym){
   var m=res.meta||{},px=m.regularMarketPrice,pv=m.previousClose||m.chartPreviousClose;
   if(px==null)return null;
   return {px:+px,chg:pv?((px-pv)/pv)*100:0};
+}
+async function okx(inst){
+  var j=await get("https://www.okx.com/api/v5/market/ticker?instId="+inst,7000);
+  var d=j&&j.data&&j.data[0];
+  if(!d||d.last==null)return null;
+  var px=+d.last, prev=+(d.sodUtc8||d.sodUtc0||d.open24h||px);
+  return {px:px,chg:prev?((px-prev)/prev)*100:0};
 }
 async function runOne(id,mode){
   var spec=A.filter(function(x){return x.id===id;})[0];
@@ -35,7 +42,10 @@ async function goldPx(){
   if(g&&g.price)S.live.xau.px=g.price;
 }
 async function macro(){
-  var nq=await yq("NQ=F"),ix=await yq("^IXIC");
+  var nq=await yq("NQ=F");
+  if(!nq)nq=await okx("US100-USDT-SWAP");
+  var ix=await yq("^IXIC");
+  if(!ix)ix=await okx("QQQ-USDT-SWAP");
   if(nq)S.mac.nq=nq;if(ix)S.mac.ix=ix;
   tape();if(S.tab==="desk")paint();
 }
@@ -70,7 +80,7 @@ function desk(){
     return H('<div class="cd"><div class="rw"><div><b>',s.name,'</b> <span class="mo mu">',g.g,'</span><div class="mo mu" style="font-size:11px">',usd(st.px)," · HTF ",a.tC,"</div></div>",pill(pc,pl),"</div>",
       '<div class="g3" style="margin-top:10px"><div class="st mo"><div class="a">Score</div><div class="b">',a.score,'</div></div><div class="st mo"><div class="a">RSI</div><div class="b">',a.rsi.toFixed(1),'</div></div><div class="st mo"><div class="a">R:R</div><div class="b">',a.rr?a.rr.toFixed(2):"-","</div></div></div>",
       '<p class="mu" style="font-size:13px;margin:10px 0 0">',msg,"</p>",
-      tk?H('<button class="bt" data-log="',s.id,'">Log setup</button>'):"","</div>");
+      tk?H('<button class="bt" data-log="',s.id,'">Log setup</button>'):H('<button class="bt" data-log="',s.id,'" style="background:var(--el);color:var(--mu)">Log watch</button>'),"</div>");
   }).join("");
   var vs=venues();
   var openN=vs.filter(function(x){return x.open;}).length;
@@ -91,7 +101,7 @@ function setup(){
     '<p class="mu" style="margin:8px 0 0">',body,"</p>",
     '<div class="mo" style="margin-top:8px">',usd(S.live[S.sid].px),"</div></div>",
     '<button class="bt" id="go" style="background:var(--el);color:var(--mu)">Re-run</button>',
-    g.ok?H('<button class="bt" data-log="',S.sid,'">Log setup</button>'):"",
+    g.ok?H('<button class="bt" data-log="',S.sid,'">Log setup</button>'):H('<button class="bt" data-log="',S.sid,'" style="background:var(--el);color:var(--mu)">Log watch</button>'),
     '<p class="su" style="font-size:11px;margin-top:10px">Closed bar only. NQ is a veto.</p>');
 }
 function logv(){
@@ -105,7 +115,7 @@ function logv(){
     var btns=j.st==="OPEN"?H('<div class="g3" style="margin-top:8px"><button class="bt" data-c="',j.id,'" data-s="TP">TP</button><button class="bt" style="background:#3a2020;color:var(--dn)" data-c="',j.id,'" data-s="SL">SL</button><button class="bt" style="background:var(--el);color:var(--mu)" data-c="',j.id,'" data-s="BE">BE</button></div>'):"";
     return H('<div class="th"><div class="rw"><b>',j.sym,'</b><span class="mo ',cls,'">',lab,'</span></div><div class="mo mu" style="font-size:12px;margin-top:6px">',fmt(j.ent)," · SL ",fmt(j.sl)," · TP ",fmt(j.tp),"</div>",btns,"</div>");
   }).join("");
-  return H('<p class="se mo">Journal</p><div class="g3" style="margin-bottom:10px"><div class="st mo"><div class="a">Closed</div><div class="b">',cl.length,'</div></div><div class="st mo"><div class="a">Win</div><div class="b">',wr==null?"-":wr+"%",'</div></div><div class="st mo"><div class="a">Exp</div><div class="b">',avg==null?"-":avg.toFixed(2)+"R","</div></div></div>",S.j.length?rows:'<div class="cd"><b>No logs</b><p class="mu">Log an A/B from Desk.</p></div>');
+  return H('<p class="se mo">Journal</p><div class="g3" style="margin-bottom:10px"><div class="st mo"><div class="a">Closed</div><div class="b">',cl.length,'</div></div><div class="st mo"><div class="a">Win</div><div class="b">',wr==null?"-":wr+"%",'</div></div><div class="st mo"><div class="a">Exp</div><div class="b">',avg==null?"-":avg.toFixed(2)+"R","</div></div></div>",S.j.length?rows:'<div class="cd"><b>No logs yet</b><p class="mu">Open Desk and tap Log watch. Close with TP / SL / BE here.</p></div>');
 }
 function newsv(){
   if(!S.news.length)return '<p class="se mo">News</p><div class="cd"><p class="mu">Headlines load in a few seconds.</p></div>';
@@ -122,7 +132,7 @@ function paint(){
 document.querySelector(".nav").onclick=function(e){var b=e.target.closest("button");if(!b)return;S.tab=b.getAttribute("data-t");if(S.tab==="setup")goSetup();if(S.tab==="news"&&!S.news.length)loadNews();paint();};
 document.getElementById("view").onclick=function(e){
   var L=e.target.closest("[data-log]");
-  if(L){var id=L.getAttribute("data-log");var p=S.sig[id]||(id===S.sid?S.setup:null);if(p&&p.a.dir){S.j.unshift({id:"j"+Date.now(),sym:id.toUpperCase(),ent:p.a.ent,sl:p.a.sl,tp:p.a.tp,st:"OPEN",r:null});save();S.tab="log";paint();}return;}
+  if(L){var id=L.getAttribute("data-log");var p=S.sig[id]||(id===S.sid?S.setup:null);var a=p&&p.a;var px=S.live[id]?S.live[id].px:null;S.j.unshift({id:"j"+Date.now(),sym:id.toUpperCase(),ent:a&&a.ent||px,sl:a&&a.sl||null,tp:a&&a.tp||null,st:"OPEN",r:null});save();S.tab="log";paint();return;}
   var sid=e.target.closest("[data-sid]");if(sid){S.sid=sid.getAttribute("data-sid");goSetup();return;}
   if(e.target.id==="go"){goSetup();return;}
   var c=e.target.closest("[data-c]");
