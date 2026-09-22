@@ -1,15 +1,21 @@
 async function kl(sym,tf){
   var map={"1m":"1","5m":"5","15m":"15","1h":"60","4h":"240"};
+  var pair=sym==="XAUTUSDT"?"PAXGUSDT":sym;
+  var vis=await get("https://data-api.binance.vision/api/v3/klines?symbol="+pair+"&interval="+tf+"&limit=160",8000);
+  if(Array.isArray(vis)&&vis.length)return bars(vis);
+  var bn=await get("https://api.binance.com/api/v3/klines?symbol="+pair+"&interval="+tf+"&limit=160",8000);
+  if(Array.isArray(bn)&&bn.length)return bars(bn);
   var bb=await get("https://api.bybit.com/v5/market/kline?category=spot&symbol="+sym+"&interval="+(map[tf]||"5")+"&limit=160",8000);
   if(bb&&bb.result&&bb.result.list&&bb.result.list.length)return bars(bb.result.list);
-  var bn=await get("https://api.binance.com/api/v3/klines?symbol="+sym+"&interval="+tf+"&limit=160",8000);
-  if(Array.isArray(bn)&&bn.length)return bars(bn);
   return [];
 }
 async function yq(sym){
   var u="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(sym)+"?interval=1m&range=1d";
   var j=await get(u,6000);
-  if(!j)j=await get("https://api.allorigins.win/raw?url="+encodeURIComponent(u),7000);
+  if(!j||!j.chart){
+    var wrap=await get("https://api.allorigins.win/get?url="+encodeURIComponent(u),10000);
+    if(wrap&&wrap.contents){try{j=JSON.parse(wrap.contents);}catch(e){j=null;}}
+  }
   var res=j&&j.chart&&j.chart.result&&j.chart.result[0];
   if(!res)return null;
   var m=res.meta||{},px=m.regularMarketPrice,pv=m.previousClose||m.chartPreviousClose;
