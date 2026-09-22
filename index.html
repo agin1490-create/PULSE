@@ -175,3 +175,200 @@ function pearson(a,b){
   var d=Math.sqrt(va*vb);return d?s/d:null;
 }
 function bars(arr){return (arr||[]).map(function(k){return {t:+k[0],o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]};}).sort(function(a,b){return a.t-b.t;});}
+async function kl(sym,tf){
+  var pair=sym==="XAUTUSDT"?"PAXGUSDT":sym;
+  var vis=await get("https://data-api.binance.vision/api/v3/klines?symbol="+pair+"&interval="+tf+"&limit=160",8000);
+  if(Array.isArray(vis)&&vis.length)return bars(vis);
+  var bn=await get("https://api.binance.com/api/v3/klines?symbol="+pair+"&interval="+tf+"&limit=160",8000);
+  if(Array.isArray(bn)&&bn.length)return bars(bn);
+  var map={"5m":"5","15m":"15","1h":"60","4h":"240"};
+  var bb=await get("https://api.bybit.com/v5/market/kline?category=spot&symbol="+sym+"&interval="+(map[tf]||"5")+"&limit=160",8000);
+  if(bb&&bb.result&&bb.result.list&&bb.result.list.length)return bars(bb.result.list);
+  return [];
+}
+async function okx(inst){
+  var j=await get("https://www.okx.com/api/v5/market/ticker?instId="+inst,7000);
+  var d=j&&j.data&&j.data[0];
+  if(!d||d.last==null)return null;
+  var px=+d.last, prev=+(d.sodUtc8||d.sodUtc0||d.open24h||px);
+  return {px:px,chg:prev?((px-prev)/prev)*100:0};
+}
+async function macro(){
+  var pair=await Promise.all([okx("US100-USDT-SWAP"),okx("QQQ-USDT-SWAP")]);
+  if(pair[0]){S.mac.nq=pair[0];S.mac.nd=pair[0];S.mac.hN.push(pair[0].px);if(S.mac.hN.length>40)S.mac.hN.shift();}
+  if(pair[1])S.mac.ix=pair[1];
+  if(S.live.btc.px){S.mac.hB.push(S.live.btc.px);if(S.mac.hB.length>40)S.mac.hB.shift();}
+  if(S.live.xau.px){S.mac.hX.push(S.live.xau.px);if(S.mac.hX.length>40)S.mac.hX.shift();}
+  tape();if(S.tab==="desk")paint();
+}
+async function runOne(id,mode){
+  var spec=A.filter(function(x){return x.id===id;})[0];
+  var exT=mode==="m15"?"15m":"5m",cxT=mode==="m15"?"4h":"1h",mdT=mode==="m15"?"1h":"15m";
+  var ex=await kl(spec.bb,exT),cx=await kl(spec.bb,cxT),md=await kl(spec.bb,mdT);
+  if(!ex.length||!cx.length)throw 0;
+  var a=analyze(ex,cx,md,S.live[id].px||undefined);
+  return {a:a,g:gate(a,id)};
+}
+async function goldPx(){
+  var g=await get("https://api.gold-api.com/price/XAU",6000);
+  if(g&&g.price){tick("xau",g.price,S.live.xau.chg);}
+}
+function tick(id,px,chg){
+  var L=S.live[id];if(!L)return;
+  if(L.p10==null)L.p10=px;
+  L.dlt=px-(L.p10||px);
+  L.px=px;if(chg!=null)L.chg=chg;
+  L.sp.push(px);if(L.sp.length>48)L.sp.shift();
+}
+function spark(buf){
+  if(!buf||buf.length<2)return "";
+  var min=Math.min.apply(null,buf),max=Math.max.apply(null,buf),r=max-min||1,d="",i;
+  for(i=0;i<buf.length;i++){var x=(i/(buf.length-1))*140,y=32-((buf[i]-min)/r)*32;d+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1);}
+  return d;
+}
+function dUSD(n){var a=Math.abs(n||0);if(a>=1e6)return (n<0?"-":"+")+"\( "+(a/1e6).toFixed(1)+"M";if(a>=1e3)return (n<0?"-":"+")+" \)"+(a/1e3).toFixed(1)+"k";return (n<0?"-":"+")+"$"+a.toFixed(0);}
+function chip(lab,px,chg,dot,cash){
+  var up=(chg||0)>=0, p=px==null?"—":(cash?usd(px):(px>=1000?px.toLocaleString("en-US",{maximumFractionDigits:lab==="NASDAQ"?0:2}):px.toFixed(2)));
+  return H('<div class="ch"><div class="rw" style="justify-content:flex-start;gap:8px"><span class="d1" style="background:',dot||"var(--eth)",'"></span><span class="mo mu" style="font-size:10px;letter-spacing:.08em">',lab,'</span></div><div class="mo" style="font-size:15px;margin-top:4px">',p,'</div><div class="mo ',up?"up":"dn",'" style="font-size:11px">',up?"+":"",(chg||0).toFixed(2),"%</div></div>");
+}
+function tape(){
+  var html="";
+  A.forEach(function(s){html+=chip(s.sym,S.live[s.id].px,S.live[s.id].chg,s.id==="btc"?"var(--btc)":s.id==="eth"?"var(--eth)":"var(--xau)",1);});
+  html+=chip("NQ",S.mac.nq&&S.mac.nq.px,S.mac.nq?S.mac.nq.chg:0,"var(--eth)",0);
+  html+=chip("NASDAQ",S.mac.ix&&S.mac.ix.px,S.mac.ix?S.mac.ix.chg:0,"var(--eth)",0);
+  html+=chip("NDX",S.mac.nd&&S.mac.nd.px,S.mac.nd?S.mac.nd.chg:0,"var(--eth)",0);
+  document.getElementById("tape").innerHTML=html;
+  document.getElementById("dot").style.background=S.st==="live"?"var(--up)":S.st==="err"?"var(--dn)":"var(--su)";
+  document.getElementById("feed").textContent=S.st==="live"?S.feed:(S.st==="err"?"reconnect":S.feed);
+}
+function pill(col,bg,lab){return H('<span class="pi" style="background:',bg,";color:",col,'">',lab,"</span>");}
+function stat(k,v){return H('<div class="st"><div class="a mo">',k,'</div><div class="b">',v,"</div></div>");}
+function qbox(lab,q,ints){
+  var up=q&&(q.chg||0)>=0;
+  var p=q?q.px.toLocaleString("en-US",{maximumFractionDigits:ints?0:2}):"—";
+  var c=q?((up?"+":"")+q.chg.toFixed(2)+"%"):"—";
+  return H('<div class="th"><div class="mo mu" style="font-size:10px;letter-spacing:.08em">',lab,'</div><div class="mo" style="font-size:15px;margin-top:4px">',p,'</div><div class="mo ',q?(up?"up":"dn"):"mu",'" style="font-size:11px">',c,"</div></div>");
+}
+function desk(){
+  var I=ist();
+  var col=I.risk==="high"?"var(--dn)":I.risk==="thin"?"var(--wn)":"var(--mu)";
+  var bg=I.risk==="high"?"rgba(208,137,137,.15)":I.risk==="thin"?"rgba(196,177,132,.15)":"var(--el)";
+  var lab=I.risk==="high"?"HIGH VOL":I.risk==="thin"?"THIN":"SESSION";
+  var name=I.cur?I.cur[0]:(I.we?"Weekend":"Between sessions");
+  var hint=I.cur?I.cur[4]:"NQ confirms, not a target.";
+  var sess=H('<div class="cd"><div class="rw" style="align-items:flex-start"><div><div class="mo mu" style="font-size:11px">',I.clk,' IST</div><div style="margin-top:4px;font-size:15px;font-weight:500">',name,'</div><p class="mu" style="font-size:13px;margin:6px 0 0;line-height:1.35">',hint,"</p></div>",pill(col,bg,lab),"</div></div>");
+  var cBN=pearson(S.mac.hB,S.mac.hN),cBX=pearson(S.mac.hX,S.mac.hN);
+  var mac=H('<div class="g2">',qbox("NQ FUT",S.mac.nq,0),qbox("NASDAQ",S.mac.ix,1),qbox("NDX 100",S.mac.nd,0),
+    H('<div class="th"><div class="mo mu" style="font-size:10px;letter-spacing:.08em">BTC β</div><div class="mo" style="font-size:15px;margin-top:4px">',cBN==null?"—":cBN.toFixed(2),'</div><div class="mo mu" style="font-size:11px">vs NQ · gold ',cBX==null?"—":cBX.toFixed(2),"</div></div>"),
+    '</div><p class="su" style="font-size:11px;line-height:1.4;margin:8px 0 0">NQ is a same-session hint, not a target. High corr = treat BTC like tech. Low corr = ignore NQ vs gold/ETF flow.</p>');
+  var cards=A.map(function(s){
+    var p=S.sig[s.id],st=S.live[s.id];
+    if(!p)return H('<div class="cd"><div class="rw"><b>',s.name,'</b><span class="mo">',usd(st.px),'</span></div><p class="mu" style="margin:8px 0 0">Reading closed structure…</p></div>');
+    var a=p.a,g=p.g,tk=g.ok,lng=tk&&a.dir==="long";
+    var pc=lng?"var(--up)":tk?"var(--dn)":"var(--mu)";
+    var pb=lng?"rgba(143,191,154,.15)":tk?"rgba(208,137,137,.15)":"var(--el)";
+    var pl=tk?(a.dir==="long"?"BUY":"SELL"):"WAIT";
+    var path=spark(st.sp);
+    var up=(st.chg||0)>=0;
+    var msg=tk?g.g+" setup. HTF "+a.tC+" · mid "+a.tM+". SL "+fmt(a.sl)+" · TP "+fmt(a.tp)+".":"Stand down. "+g.r.slice(0,2).join(" · ")+".";
+    var gbg=g.g==="A"?"rgba(143,191,154,.15)":g.g==="B"?"rgba(196,177,132,.15)":"var(--el)";
+    var gc=g.g==="A"?"var(--up)":g.g==="B"?"var(--wn)":"var(--mu)";
+    return H('<div class="cd"><div class="rw" style="align-items:flex-start"><div><div class="rw" style="justify-content:flex-start;gap:8px"><span style="font-size:16px;font-weight:500">',s.name,'</span><span class="gd" style="background:',gbg,";color:",gc,'">',g.g,'</span></div><div class="mo mu" style="font-size:11px;margin-top:2px">',usd(st.px)," · ",a.reg||"—",s.id==="xau"?(goldOk()?" · London/NY":" · off hours"):"","</div></div>",pill(pc,pb,pl),"</div>",
+      path?H('<svg class="sp" viewBox="0 0 140 32" preserveAspectRatio="none"><path d="',path,'" fill="none" stroke="',up?"var(--up)":"var(--dn)",'" stroke-width="1.4"/></svg>'):"",
+      '<div class="g3" style="margin-top:12px">',stat("Score",a.score),stat("RSI",a.rsi.toFixed(1)),stat("R:R",a.rr?a.rr.toFixed(2):"—"),"</div>",
+      '<div class="g2" style="margin-top:8px">',stat("Delta 10s",dUSD(st.dlt)),stat("HTF / mid",(a.tC||"—")+" / "+(a.tM||"—")),"</div>",
+      '<p class="mu" style="font-size:13px;line-height:1.35;margin:12px 0 0">',msg,"</p>",
+      H('<button class="bt" data-log="',s.id,'">',tk?"Log setup":"Log watch","</button></div>"));
+  }).join("");
+  var vs=venues();
+  var openN=vs.filter(function(x){return x.open;}).length;
+  var world=H('<div class="rw"><p class="se mo" style="margin:18px 0 10px">World openings</p><span class="mo mu" style="font-size:10px">',openN,' open</span></div><div class="g2">',vs.map(function(v){
+    return H('<div class="th"><div class="rw"><span style="font-size:14px;font-weight:500">',v.n,'</span><span class="d1" style="background:',v.open?"var(--up)":"var(--su)",'"></span></div><div class="mo mu" style="font-size:11px;margin-top:4px">',v.c,'</div><div class="rw" style="margin-top:8px;align-items:flex-end"><span class="mo" style="font-size:16px">',v.clk,'</span><span class="mo ',v.open?"up":"mu",'" style="font-size:10px">',v.lab,"</span></div></div>");
+  }).join(""),"</div>");
+  var news=S.news.slice(0,3);
+  var nw=H('<div class="rw"><p class="se mo" style="margin:18px 0 10px">Important news</p><button class="mo mu" data-t="news" style="font-size:10px">All</button></div>',
+    news.length?news.map(function(n){return H('<div class="th"><div class="mo mu" style="font-size:10px">',n.src,' · ',n.when,'</div><div style="margin-top:6px;font-size:14px;line-height:1.35">',n.t,"</div></div>");}).join(""):'<div class="cd"><p class="mu">Headlines load in a few seconds.</p></div>');
+  return H('<p class="se mo">Session · IST</p>',sess,mac,'<p class="se mo">Judgment · BTC ETH XAU</p>',cards,'<p class="su" style="font-size:11px;line-height:1.45">A = score ≥ 88, R:R ≥ 2, HTF+mid aligned, closed reversal. B = 78 / 1.8 with mid-TF. Against HTF is always WAIT.</p>',world,nw);
+}
+function setup(){
+  var segs=A.map(function(s){return H("<button data-sid='",s.id,"' class='",S.sid===s.id?"on":"","'>",s.sym,"</button>");}).join("");
+  var p=S.setup;
+  if(!p)return H('<p class="se mo">Setup</p><div class="sg">',segs,'</div><p class="mu">Scanning…</p>');
+  var a=p.a,g=p.g;
+  var head=g.ok?g.g+" SETUP · "+(a.dir||"").toUpperCase():"STAND DOWN";
+  var body=g.ok?"Take only if this matches your plan. R:R "+(a.rr||0).toFixed(2)+".":g.r.join(" · ");
+  var bars=(a.parts||[]).map(function(x){
+    var pct=x[2]?Math.round(100*x[1]/x[2]):0;
+    return H('<div style="margin-bottom:10px"><div class="rw" style="font-size:12px"><span>',x[0],'</span><span class="mo mu">',x[1],'/',x[2],'</span></div><div class="bar"><i style="width:',pct,'%;background:',x[1]===x[2]?"var(--up)":x[1]?"var(--ac)":"var(--su)",'"></i></div></div>');
+  }).join("");
+  return H('<p class="se mo">Setup</p><div class="sg">',segs,"</div>",
+    '<div class="cd"><div class="mo" style="color:',g.ok?"var(--up)":"var(--mu)",'">',head,'</div><p class="mu" style="margin:8px 0 0;font-size:13px;line-height:1.35">',body,'</p><p class="mo mu" style="font-size:11px;margin-top:8px">',usd(S.live[S.sid].px),"</p></div>",
+    '<div class="cd"><p class="se mo" style="margin:0 0 10px">Confluence</p>',bars||'<p class="mu">No parts</p>',"</div>",
+    '<button class="bt" id="go" style="background:var(--el);color:var(--mu)">Re-analyse</button>',
+    H('<button class="bt" data-log="',S.sid,'">',g.ok?"Log this setup":"Log watch","</button>"),
+    '<p class="su" style="font-size:11px;margin-top:10px;line-height:1.4">Aid only. NQ confirms or vetoes — it does not set the target.</p>');
+}
+function logv(){
+  var cl=S.j.filter(function(x){return x.st!=="OPEN"&&x.r!=null;});
+  var w=cl.filter(function(x){return x.r>0;});
+  var wr=cl.length?Math.round(100*w.length/cl.length):null;
+  var avg=cl.length?cl.reduce(function(a,b){return a+(b.r||0);},0)/cl.length:null;
+  var rows=S.j.slice(0,30).map(function(j){
+    var cls=j.st==="TP"?"up":j.st==="SL"?"dn":"mu";
+    var lab=j.st==="OPEN"?"OPEN":j.st+" "+((j.r||0)>=0?"+":"")+(j.r||0).toFixed(2)+"R";
+    var btns=j.st==="OPEN"?H('<div class="g3" style="margin-top:8px"><button class="bt" data-c="',j.id,'" data-s="TP">Hit TP</button><button class="bt" style="background:#3a2020;color:var(--dn)" data-c="',j.id,'" data-s="SL">Hit SL</button><button class="bt" style="background:var(--el);color:var(--mu)" data-c="',j.id,'" data-s="BE">BE</button></div>'):"";
+    return H('<div class="th"><div class="rw"><b>',j.sym,'</b><span class="mo ',cls,'">',lab,'</span></div><div class="mo mu" style="font-size:12px;margin-top:6px">',fmt(j.ent)," · SL ",fmt(j.sl)," · TP ",fmt(j.tp),"</div>",btns,"</div>");
+  }).join("");
+  return H('<p class="se mo">Signal journal</p><div class="g3" style="margin-bottom:10px">',stat("Closed",cl.length),stat("Win rate",wr==null?"—":wr+"%"),stat("Expect.",avg==null?"—":avg.toFixed(2)+"R"),"</div>",
+    S.j.length?rows:'<div class="cd" style="text-align:center"><p style="font-weight:500">No logged setups</p><p class="mu" style="margin:6px 0 0;font-size:13px">On Desk, tap Log watch on BTC, ETH, or Gold.</p></div>');
+}
+function newsv(){
+  if(!S.news.length)return '<p class="se mo">News</p><div class="cd"><p class="mu">Headlines load in a few seconds.</p></div>';
+  return H('<p class="se mo">News</p>',S.news.map(function(n){
+    return H('<div class="th"><div class="mo mu" style="font-size:10px">',n.src,' · ',n.when,'</div><div style="margin-top:6px;font-size:14px;line-height:1.35">',n.t,"</div></div>");
+  }).join(""));
+}
+function paint(){
+  tape();
+  document.getElementById("view").innerHTML=S.tab==="desk"?desk():S.tab==="setup"?setup():S.tab==="news"?newsv():logv();
+  var bs=document.querySelectorAll(".nav button");
+  for(var i=0;i<bs.length;i++)bs[i].classList.toggle("on",bs[i].getAttribute("data-t")===S.tab);
+}
+document.querySelector(".nav").onclick=function(e){var b=e.target.closest("button");if(!b)return;S.tab=b.getAttribute("data-t");if(S.tab==="setup")goSetup();if(S.tab==="news"&&!S.news.length)loadNews();paint();};
+document.getElementById("view").onclick=function(e){
+  var n=e.target.closest("[data-t]");if(n&&n.getAttribute("data-t")==="news"){S.tab="news";if(!S.news.length)loadNews();paint();return;}
+  var L=e.target.closest("[data-log]");
+  if(L){var id=L.getAttribute("data-log");var p=S.sig[id]||(id===S.sid?S.setup:null);var a=p&&p.a;var px=S.live[id]?S.live[id].px:null;S.j.unshift({id:"j"+Date.now(),sym:id.toUpperCase(),ent:a&&a.ent||px,sl:a&&a.sl||null,tp:a&&a.tp||null,st:"OPEN",r:null});save();S.tab="log";paint();return;}
+  var sid=e.target.closest("[data-sid]");if(sid){S.sid=sid.getAttribute("data-sid");goSetup();return;}
+  if(e.target.id==="go"){goSetup();return;}
+  var c=e.target.closest("[data-c]");
+  if(c){var id2=c.getAttribute("data-c"),st=c.getAttribute("data-s");S.j.forEach(function(j){if(j.id!==id2)return;var rk=Math.abs(j.ent-j.sl)||1e-9;if(st==="TP"){j.st="TP";j.r=Math.abs((j.tp||j.ent)-j.ent)/rk;}else if(st==="SL"){j.st="SL";j.r=-1;}else{j.st="BE";j.r=0;}});save();paint();}
+};
+async function goSetup(){S.setup=null;paint();try{S.setup=await runOne(S.sid,"m5");}catch(e){S.setup={a:{px:S.live[S.sid].px,dir:null,score:0,tC:"-",tM:"-",rsi:50,rr:null,parts:[]},g:{ok:0,g:"WAIT",r:["no candles"]}};}paint();}
+async function sigs(){
+  await Promise.all(A.map(async function(s){try{S.sig[s.id]=await runOne(s.id,"m5");}catch(e){S.sig[s.id]={a:{px:S.live[s.id].px,dir:null,score:0,tC:"-",tM:"-",rsi:50,rr:null,parts:[],reg:"—"},g:{ok:0,g:"WAIT",r:["feed blocked"]}};}}));
+  paint();
+}
+function ws(){
+  var w;
+  try{w=new WebSocket("wss://stream.bybit.com/v5/public/spot");}catch(e){S.st="err";tape();return;}
+  w.onopen=function(){S.st="live";S.feed="Bybit";tape();w.send(JSON.stringify({op:"subscribe",args:["publicTrade.BTCUSDT","tickers.BTCUSDT","publicTrade.ETHUSDT","tickers.ETHUSDT"]}));};
+  w.onclose=function(){S.st="err";tape();};
+  w.onmessage=function(ev){
+    var m=JSON.parse(ev.data),t=m.topic||"",d=m.data;if(!d)return;
+    var id=t.indexOf("BTC")>=0?"btc":t.indexOf("ETH")>=0?"eth":null;if(!id)return;
+    if(t.indexOf("publicTrade")===0){var x=Array.isArray(d)?d[0]:d;tick(id,+x.p);tape();}
+    else if(t.indexOf("tickers")===0){var y=Array.isArray(d)?d[0]:d;tick(id,+y.lastPrice,(+y.price24hPcnt)*100);tape();}
+  };
+}
+(async function(){
+  paint();ws();
+  try{await goldPx();}catch(e){}
+  loadNews();macro();
+  try{await sigs();}catch(e){}
+  setInterval(function(){A.forEach(function(s){S.live[s.id].p10=S.live[s.id].px;});},10000);
+  setInterval(sigs,60000);setInterval(goldPx,20000);setInterval(macro,20000);
+})();
+</script>
+</body>
+</html>
