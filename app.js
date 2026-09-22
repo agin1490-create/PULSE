@@ -11,11 +11,7 @@ async function kl(sym,tf){
 }
 async function yq(sym){
   var u="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(sym)+"?interval=1m&range=1d";
-  var j=await get(u,6000);
-  if(!j||!j.chart){
-    var wrap=await get("https://api.allorigins.win/get?url="+encodeURIComponent(u),8000);
-    if(wrap&&wrap.contents){try{j=JSON.parse(wrap.contents);}catch(e){j=null;}}
-  }
+  var j=await get(u,2500);
   var res=j&&j.chart&&j.chart.result&&j.chart.result[0];
   if(!res)return null;
   var m=res.meta||{},px=m.regularMarketPrice,pv=m.previousClose||m.chartPreviousClose;
@@ -29,6 +25,14 @@ async function okx(inst){
   var px=+d.last, prev=+(d.sodUtc8||d.sodUtc0||d.open24h||px);
   return {px:px,chg:prev?((px-prev)/prev)*100:0};
 }
+async function macro(){
+  var pair=await Promise.all([okx("US100-USDT-SWAP"),okx("QQQ-USDT-SWAP")]);
+  if(pair[0])S.mac.nq=pair[0];
+  if(pair[1])S.mac.ix=pair[1];
+  if(!S.mac.nq){var nq=await yq("NQ=F");if(nq)S.mac.nq=nq;}
+  if(!S.mac.ix){var ix=await yq("^IXIC");if(ix)S.mac.ix=ix;}
+  tape();if(S.tab==="desk")paint();
+}
 async function runOne(id,mode){
   var spec=A.filter(function(x){return x.id===id;})[0];
   var exT=mode==="m15"?"15m":"5m",cxT=mode==="m15"?"4h":"1h",mdT=mode==="m15"?"1h":"15m";
@@ -40,14 +44,6 @@ async function runOne(id,mode){
 async function goldPx(){
   var g=await get("https://api.gold-api.com/price/XAU",6000);
   if(g&&g.price)S.live.xau.px=g.price;
-}
-async function macro(){
-  var nq=await yq("NQ=F");
-  if(!nq)nq=await okx("US100-USDT-SWAP");
-  var ix=await yq("^IXIC");
-  if(!ix)ix=await okx("QQQ-USDT-SWAP");
-  if(nq)S.mac.nq=nq;if(ix)S.mac.ix=ix;
-  tape();if(S.tab==="desk")paint();
 }
 function chip(lab,px,chg){
   var up=(chg||0)>=0;
