@@ -324,21 +324,32 @@ function desk(){
     news.length?news.map(function(n){return H('<div class="th"><div class="mo mu" style="font-size:10px">',n.src,' · ',n.when,'</div><div style="margin-top:6px;font-size:14px;line-height:1.35">',n.t,"</div></div>");}).join(""):'<div class="cd"><p class="mu">Headlines load in a few seconds.</p></div>');
   return H('<p class="se mo">Session · IST</p>',sess,mac,'<p class="se mo">Judgment · BTC ETH XAU</p>',cards,'<p class="su" style="font-size:11px;line-height:1.45">A = score ≥ 88, R:R ≥ 2, HTF+mid aligned, closed reversal. B = 78 / 1.8 with mid-TF. Against HTF is always WAIT.</p>',world,nw);
 }
+function ring(score){
+  var c=2*Math.PI*30, off=c*(1-Math.max(0,Math.min(100,score||0))/100);
+  var col=(score||0)>=78?"var(--up)":"var(--wn)";
+  return H('<div style="position:relative;width:72px;height:72px;flex:0 0 auto"><svg width="72" height="72" style="transform:rotate(-90deg)"><circle cx="36" cy="36" r="30" stroke="rgba(255,255,255,.08)" stroke-width="6" fill="none"/><circle cx="36" cy="36" r="30" stroke="',col,'" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="',c.toFixed(1),'" stroke-dashoffset="',off.toFixed(1),'"/></svg><div class="mo" style="position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:18px">',score,'</div></div>');
+}
 function setup(){
   S.mode=S.mode||"m5";
   var segs=A.map(function(s){return H("<button data-sid='",s.id,"' class='",S.sid===s.id?"on":"","'>",s.sym,"</button>");}).join("");
   var modes=H("<button data-md='m5' class='",S.mode==="m5"?"on":"","'>5m / 1h</button><button data-md='m15' class='",S.mode==="m15"?"on":"","'>15m / 4h</button>");
   var p=S.setup;
-  if(!p)return H('<p class="se mo">Setup</p><div class="sg">',segs,'</div><div class="sg">',modes,'</div><p class="mu">Scanning…</p>');
-  var a=p.a,g=p.g;
+  if(!p)return H('<p class="se mo">Setup analyser</p><div class="sg">',segs,'</div><div class="sg">',modes,'</div><p class="mu">Reading closed candles…</p>');
+  var a=p.a,g=p.g,I=ist();
   var head=g.ok?g.g+" SETUP · "+(a.dir||"").toUpperCase():"STAND DOWN";
-  var body=g.ok?"Take only if this matches your plan. R:R "+(a.rr||0).toFixed(2)+".":g.r.join(" · ");
+  var body=g.ok?"Take only if this matches your plan. R:R "+(a.rr||0).toFixed(2)+".":g.r.slice(0,4).join(" · ");
+  var labels={"HTF":"HTF aligned","Mid":"Mid-TF agrees","Level":"At support","Pattern":"Closed reversal","EMA":"EMA stack","RSI":"RSI mid"};
   var bars=(a.parts||[]).map(function(x){
     var pct=x[2]?Math.round(100*x[1]/x[2]):0;
-    return H('<div style="margin-bottom:10px"><div class="rw" style="font-size:12px"><span>',x[0],'</span><span class="mo mu">',x[1],'/',x[2],'</span></div><div class="bar"><i style="width:',pct,'%;background:',x[1]===x[2]?"var(--up)":x[1]?"var(--ac)":"var(--su)",'"></i></div></div>');
+    return H('<div style="margin-bottom:10px"><div class="rw" style="font-size:12px"><span>',labels[x[0]]||x[0],'</span><span class="mo mu">',x[1],'/',x[2],'</span></div><div class="bar"><i style="width:',pct,'%;background:',x[1]===x[2]?"var(--up)":x[1]?"var(--ac)":"var(--su)",'"></i></div></div>');
   }).join("");
-  return H('<p class="se mo">Setup</p><div class="sg">',segs,'</div><div class="sg">',modes,"</div>",
-    '<div class="cd"><div class="mo" style="color:',g.ok?"var(--up)":"var(--mu)",'">',head,'</div><p class="mu" style="margin:8px 0 0;font-size:13px;line-height:1.35">',body,'</p><p class="mo mu" style="font-size:11px;margin-top:8px">',usd(S.live[S.sid].px),"</p></div>",
+  var qc=function(q){if(!q)return "—";return ((q.chg>=0)?"+":"")+q.chg.toFixed(2)+"%";};
+  var cBN=pearson(S.mac.hB,S.mac.hN),cBX=pearson(S.mac.hX,S.mac.hN);
+  var sess=I.cur?I.cur[0]+" · "+I.cur[4]:"Between sessions";
+  var macroBox=H('<div class="cd"><p class="se mo" style="margin:0 0 8px">Macro · NQ · session</p><p class="mu" style="font-size:13px;line-height:1.35">',sess,'</p><div class="g3" style="margin-top:10px">',stat("NQ",qc(S.mac.nq)),stat("NASDAQ",qc(S.mac.ix)),stat("NDX",qc(S.mac.nd)),'</div><div class="g2" style="margin-top:8px">',stat("BTC–NQ",cBN==null?"—":cBN.toFixed(2)),stat("BTC–XAU",cBX==null?"—":cBX.toFixed(2)),'</div><p class="su" style="font-size:12px;margin:10px 0 0;line-height:1.4">NQ is a same-session hint, not a target.</p></div>');
+  return H('<p class="se mo">Setup analyser</p><div class="sg">',segs,'</div><div class="sg">',modes,"</div>",
+    '<div class="cd" style="display:flex;gap:14px;align-items:center">',ring(a.score),'<div style="flex:1"><div class="mo" style="color:',g.ok?"var(--up)":"var(--mu)",'">',head,'</div><p class="mu" style="margin:6px 0 0;font-size:13px;line-height:1.35">',body,'</p><p class="mo mu" style="font-size:11px;margin-top:6px">',usd(S.live[S.sid].px),"</p></div></div>",
+    macroBox,
     '<div class="cd"><p class="se mo" style="margin:0 0 10px">Confluence</p>',bars||'<p class="mu">No parts</p>',"</div>",
     '<button class="bt" id="go" style="background:var(--el);color:var(--mu)">Re-analyse</button>',
     H('<button class="bt" data-log="',S.sid,'">',g.ok?"Log this setup":"Log watch","</button>"),
