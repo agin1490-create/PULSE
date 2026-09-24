@@ -274,14 +274,51 @@ function qbox(lab,q,ints){
   var c=q?((up?"+":"")+q.chg.toFixed(2)+"%"):"—";
   return H('<div class="th"><div class="mo mu" style="font-size:10px;letter-spacing:.08em">',lab,'</div><div class="mo" style="font-size:15px;margin-top:4px">',p,'</div><div class="mo ',q?(up?"up":"dn"):"mu",'" style="font-size:11px">',c,"</div></div>");
 }
+function tapeIst(){
+  var p=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Kolkata",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date());
+  function g(t){for(var i=0;i<p.length;i++)if(p[i].type===t)return p[i].value;return "";}
+  var hh=+g("hour");if(hh===24)hh=0;var m=hh*60+ +g("minute");var we=g("weekday")==="Sat"||g("weekday")==="Sun";
+  var clk=String(hh).padStart(2,"0")+":"+g("minute");
+  var W=[["Asia",330,870,"normal","Quieter unless Asia-specific news. Range is common."],["London / Europe",810,1170,"normal","Liquidity builds. First real directional attempts."],["Europe–US overlap",1170,1470,"high","Highest volume. Violent 5m candles. NQ must agree for BTC."],["US cash close",1470,1530,"normal","ETF snapshot flow. Extra prints possible, not a signal by itself."],["Thin overnight",120,360,"thin","Spikes are easier to fade. No A setups."]];
+  function cov(a,b){return b<=1440?(m>=a&&m<b):(m>=a||m<b-1440);}
+  function wait(st){var s=((st%1440)+1440)%1440;return m<=s?s-m:1440-m+s;}
+  var cur=null;if(!we)for(var i=0;i<W.length;i++)if(cov(W[i][1],W[i][2])){cur=W[i];break;}
+  var next=null,best=1e9;
+  for(i=0;i<W.length;i++){if(cur&&W[i][0]===cur[0])continue;var w=wait(W[i][1]);if(w<best){best=w;next={name:W[i][0],hint:W[i][4],risk:W[i][3],lab:w<60?("in "+w+"m"):("in "+Math.floor(w/60)+"h "+(w%60)+"m")};}}
+  return {clk:clk,we:we,cur:cur,risk:cur?cur[3]:"normal",next:next};
+}
+function judge(id,dir){
+  var nq=S.mac.nq?S.mac.nq.chg:null,cN=pearson(S.mac.hB,S.mac.hN),cX=pearson(S.mac.hX,S.mac.hN);
+  var regime="unknown";
+  if(cX!=null&&Math.abs(cX)>=0.55)regime="gold-linked";
+  else if(cN!=null&&cN>=0.55)regime="tech-beta";
+  else if(cN!=null&&cN<0.25)regime="idiosyncratic";
+  var lines=[],nqC="n/a";
+  if(id==="xau"){lines.push("Gold: NQ is background. London/NY hours matter more than Nasdaq.");return {regime:regime,nq:nqC,lines:lines};}
+  if(regime==="tech-beta")lines.push("High BTC–NQ correlation. Treat BTC like leveraged tech this tape.");
+  else if(regime==="gold-linked")lines.push("BTC tracking gold more than Nasdaq. ETF prints and liquidations matter more than NQ.");
+  else if(regime==="idiosyncratic")lines.push("Low BTC–NQ correlation. Nasdaq overnight is context only.");
+  if(nq==null||!dir||regime==="idiosyncratic"||regime==="gold-linked")nqC="neutral";
+  else if(regime==="tech-beta"){
+    if(dir==="long"&&nq<=-0.35)nqC="diverge";
+    else if(dir==="short"&&nq>=0.35)nqC="diverge";
+    else if((dir==="long"&&nq>=0.1)||(dir==="short"&&nq<=-0.1))nqC="agree";
+    else nqC="neutral";
+  }
+  if(nqC==="diverge")lines.push(dir==="long"?"NQ selling off while BTC wants long — equity bid is not transferring. WAIT.":"NQ ripping while BTC wants short — risk-on tape intact. WAIT.");
+  else if(nqC==="agree")lines.push("NQ and BTC direction agree this session. Confirmation only — not a price target.");
+  else if(nq!=null)lines.push("NQ overnight "+(nq>=0?"+":"")+nq.toFixed(2)+"%. Same-session hint, not a magnet.");
+  return {regime:regime,nq:nqC,lines:lines};
+}
 function desk(){
-  var I=ist();
+  var I=tapeIst();
   var col=I.risk==="high"?"var(--dn)":I.risk==="thin"?"var(--wn)":"var(--mu)";
   var bg=I.risk==="high"?"rgba(208,137,137,.15)":I.risk==="thin"?"rgba(196,177,132,.15)":"var(--el)";
-  var lab=I.risk==="high"?"HIGH VOL":I.risk==="thin"?"THIN":"SESSION";
+  var lab=I.risk==="high"?"HIGH VOL":I.risk==="thin"?"THIN":"PRE-ALERT";
   var name=I.cur?I.cur[0]:(I.we?"Weekend":"Between sessions");
-  var hint=I.cur?I.cur[4]:"NQ confirms, not a target.";
-  var sess=H('<div class="cd"><div class="rw" style="align-items:flex-start"><div><div class="mo mu" style="font-size:11px">',I.clk,' IST</div><div style="margin-top:4px;font-size:15px;font-weight:500">',name,'</div><p class="mu" style="font-size:13px;margin:6px 0 0;line-height:1.35">',hint,"</p></div>",pill(col,bg,lab),"</div></div>");
+  var hint=I.cur?I.cur[4]:(I.next?"Next: "+I.next.name+" "+I.next.lab+".":"NQ confirms, not a target.");
+  var pre=I.next?H('<p class="su" style="font-size:11px;margin:10px 0 0;line-height:1.4">Pre-alert · ',I.next.name," ",I.next.lab," — ",I.next.hint,"</p>"):"";
+  var sess=H('<div class="cd"><div class="rw" style="align-items:flex-start"><div><div class="mo mu" style="font-size:11px">',I.clk,' IST</div><div style="margin-top:4px;font-size:15px;font-weight:500">',name,'</div><p class="mu" style="font-size:13px;margin:6px 0 0;line-height:1.35">',hint,"</p></div>",pill(col,bg,lab),"</div>",pre,"</div>");
   var cBN=pearson(S.mac.hB,S.mac.hN),cBX=pearson(S.mac.hX,S.mac.hN);
   var mac=H('<div class="g2">',qbox("NQ FUT",S.mac.nq,0),qbox("NASDAQ",S.mac.ix,1),qbox("NDX 100",S.mac.nd,0),
     H('<div class="th"><div class="mo mu" style="font-size:10px;letter-spacing:.08em">BTC β</div><div class="mo" style="font-size:15px;margin-top:4px">',cBN==null?"—":cBN.toFixed(2),'</div><div class="mo mu" style="font-size:11px">vs NQ · gold ',cBX==null?"—":cBX.toFixed(2),"</div></div>"),
@@ -307,12 +344,14 @@ function desk(){
   }).join("");
   var vs=venues();
   var openN=vs.filter(function(x){return x.open;}).length;
+  S.idx=S.idx||{};
+  if(!S.idx.nas&&S.mac.nq)S.idx.nas={name:"Nasdaq",px:S.mac.nq.px,chg:S.mac.nq.chg};
+  if(!S.idx.spx&&S.mac.sp)S.idx.spx={name:"S&P 500",px:S.mac.sp.px,chg:S.mac.sp.chg};
   var map={"New York":["spx","nas"],"London":["ftse"],"Frankfurt":["dax"],"Tokyo":["nky"],"Hong Kong":["hsi"]};
   function iline(q){
     if(!q||q.px==null)return "";
     var up=(q.chg||0)>=0;
-    var px=q.px>=1000?q.px.toLocaleString("en-US",{maximumFractionDigits:0}):q.px.toFixed(2);
-    return H('<div class="mo ',up?"up":"dn",'" style="font-size:11px;margin-top:6px">',q.name," ",px," ",up?"+":"",(q.chg||0).toFixed(2),"%</div>");
+    return H('<div class="mo ',up?"up":"dn",'" style="font-size:11px;margin-top:6px">',q.name," ",up?"+":"",(q.chg||0).toFixed(2),"%</div>");
   }
   var world=H('<div class="rw"><p class="se mo" style="margin:18px 0 10px">World openings</p><span class="mo mu" style="font-size:10px">',openN,' open</span></div><div class="g2">',vs.map(function(v){
     var keys=map[v.n]||[];
@@ -335,7 +374,7 @@ function setup(){
   var modes=H("<button data-md='m5' class='",S.mode==="m5"?"on":"","'>5m / 1h</button><button data-md='m15' class='",S.mode==="m15"?"on":"","'>15m / 4h</button>");
   var p=S.setup;
   if(!p)return H('<p class="se mo">Setup analyser</p><div class="sg">',segs,'</div><div class="sg">',modes,'</div><p class="mu">Reading closed candles…</p>');
-  var a=p.a,g=p.g,I=ist();
+  var a=p.a,g=p.g,I=tapeIst();
   var head=g.ok?g.g+" SETUP · "+(a.dir||"").toUpperCase():"STAND DOWN";
   var body=g.ok?"Take only if this matches your plan. R:R "+(a.rr||0).toFixed(2)+".":g.r.slice(0,4).join(" · ");
   var labels={"HTF":"HTF aligned","Mid":"Mid-TF agrees","Level":"At support","Pattern":"Closed reversal","EMA":"EMA stack","RSI":"RSI mid"};
@@ -345,8 +384,10 @@ function setup(){
   }).join("");
   var qc=function(q){if(!q)return "—";return ((q.chg>=0)?"+":"")+q.chg.toFixed(2)+"%";};
   var cBN=pearson(S.mac.hB,S.mac.hN),cBX=pearson(S.mac.hX,S.mac.hN);
-  var sess=I.cur?I.cur[0]+" · "+I.cur[4]:"Between sessions";
-  var macroBox=H('<div class="cd"><p class="se mo" style="margin:0 0 8px">Macro · NQ · session</p><p class="mu" style="font-size:13px;line-height:1.35">',sess,'</p><div class="g3" style="margin-top:10px">',stat("NQ",qc(S.mac.nq)),stat("NASDAQ",qc(S.mac.ix)),stat("NDX",qc(S.mac.nd)),'</div><div class="g2" style="margin-top:8px">',stat("BTC–NQ",cBN==null?"—":cBN.toFixed(2)),stat("BTC–XAU",cBX==null?"—":cBX.toFixed(2)),'</div><p class="su" style="font-size:12px;margin:10px 0 0;line-height:1.4">NQ is a same-session hint, not a target.</p></div>');
+  var sess=I.cur?I.cur[0]+" · "+I.cur[4]:(I.next?"Next "+I.next.name+" "+I.next.lab:"Between sessions");
+  var J=judge(S.sid,a.dir);
+  var nqCol=J.nq==="agree"?"var(--up)":J.nq==="diverge"?"var(--dn)":"var(--su)";
+  var macroBox=H('<div class="cd"><p class="se mo" style="margin:0 0 8px">Macro · NQ · session</p><p class="mu" style="font-size:13px;line-height:1.35">',sess,'</p><div class="g3" style="margin-top:10px">',stat("NQ",qc(S.mac.nq)),stat("NASDAQ",qc(S.mac.ix)),stat("NDX",qc(S.mac.nd)),'</div><div class="g2" style="margin-top:8px">',stat("BTC–NQ",cBN==null?"—":cBN.toFixed(2)),stat("BTC–XAU",cBX==null?"—":cBX.toFixed(2)),'</div><p class="mu" style="font-size:13px;margin:10px 0 0;line-height:1.4">',J.lines.join(" "),'</p><p class="mo" style="font-size:11px;margin-top:8px;color:',nqCol,'">',J.regime," · NQ ",J.nq,"</p></div>");
   return H('<p class="se mo">Setup analyser</p><div class="sg">',segs,'</div><div class="sg">',modes,"</div>",
     '<div class="cd" style="display:flex;gap:14px;align-items:center">',ring(a.score),'<div style="flex:1"><div class="mo" style="color:',g.ok?"var(--up)":"var(--mu)",'">',head,'</div><p class="mu" style="margin:6px 0 0;font-size:13px;line-height:1.35">',body,'</p><p class="mo mu" style="font-size:11px;margin-top:6px">',usd(S.live[S.sid].px),"</p></div></div>",
     macroBox,
@@ -398,15 +439,33 @@ async function sigs(){
   paint();
 }
 function ws(){
-  var w;
-  try{w=new WebSocket("wss://stream.bybit.com/v5/public/spot");}catch(e){S.st="err";tape();return;}
-  w.onopen=function(){S.st="live";S.feed="Bybit";tape();w.send(JSON.stringify({op:"subscribe",args:["publicTrade.BTCUSDT","tickers.BTCUSDT","publicTrade.ETHUSDT","tickers.ETHUSDT"]}));};
-  w.onclose=function(){S.st="err";tape();};
+  var w, opened=0, fell=0;
+  function bybit(){
+    if(fell)return; fell=1;
+    try{w=new WebSocket("wss://stream.bybit.com/v5/public/spot");}catch(e){S.st="err";tape();return;}
+    w.onopen=function(){S.st="live";S.feed="Bybit";tape();w.send(JSON.stringify({op:"subscribe",args:["publicTrade.BTCUSDT","tickers.BTCUSDT","publicTrade.ETHUSDT","tickers.ETHUSDT"]}));};
+    w.onclose=function(){S.st="err";tape();};
+    w.onmessage=function(ev){
+      var m;try{m=JSON.parse(ev.data);}catch(e){return;}
+      var t=m.topic||"",d=m.data;if(!d)return;
+      var id=t.indexOf("BTC")>=0?"btc":t.indexOf("ETH")>=0?"eth":null;if(!id)return;
+      if(t.indexOf("publicTrade")===0){var x=Array.isArray(d)?d[0]:d;tick(id,+x.p);tape();}
+      else if(t.indexOf("tickers")===0){var y=Array.isArray(d)?d[0]:d;tick(id,+y.lastPrice,(+y.price24hPcnt)*100);tape();}
+    };
+  }
+  try{w=new WebSocket("wss://stream.binance.com:9443/stream?streams=btcusdt@aggTrade/btcusdt@ticker/ethusdt@aggTrade/ethusdt@ticker");}
+  catch(e){bybit();return;}
+  var tm=setTimeout(function(){if(!opened){try{w.close();}catch(e){}bybit();}},2500);
+  w.onopen=function(){opened=1;clearTimeout(tm);S.st="live";S.feed="Binance";tape();};
+  w.onerror=function(){if(!opened){clearTimeout(tm);try{w.close();}catch(e){}bybit();}};
+  w.onclose=function(){if(!opened&&!fell){S.st="err";tape();}};
   w.onmessage=function(ev){
-    var m=JSON.parse(ev.data),t=m.topic||"",d=m.data;if(!d)return;
-    var id=t.indexOf("BTC")>=0?"btc":t.indexOf("ETH")>=0?"eth":null;if(!id)return;
-    if(t.indexOf("publicTrade")===0){var x=Array.isArray(d)?d[0]:d;tick(id,+x.p);tape();}
-    else if(t.indexOf("tickers")===0){var y=Array.isArray(d)?d[0]:d;tick(id,+y.lastPrice,(+y.price24hPcnt)*100);tape();}
+    var m;try{m=JSON.parse(ev.data);}catch(e){return;}
+    var d=m.data,s=m.stream||"";if(!d)return;
+    var id=s.indexOf("btc")===0?"btc":s.indexOf("eth")===0?"eth":null;if(!id)return;
+    if(s.indexOf("aggTrade")>=0)tick(id,+d.p);
+    else if(s.indexOf("ticker")>=0)tick(id,+d.c,+d.P);
+    tape();
   };
 }
 (async function(){
@@ -415,7 +474,8 @@ function ws(){
   loadNews();macro();
   try{await sigs();}catch(e){}
   setInterval(function(){A.forEach(function(s){S.live[s.id].p10=S.live[s.id].px;});},10000);
-  setInterval(sigs,60000);setInterval(goldPx,20000);setInterval(macro,20000);
+  setInterval(sigs,60000);setInterval(goldPx,20000);setInterval(macro,15000);
+  setInterval(function(){if(S.tab==="desk"||S.tab==="setup")paint();},15000);
 })();
 </script>
 </body>
