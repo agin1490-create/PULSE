@@ -195,9 +195,7 @@ async function okx(inst){
 }
 async function yq(sym){
   var u="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(sym)+"?interval=1d&range=5d";
-  var j=await get("https://api.allorigins.win/get?url="+encodeURIComponent(u),6000);
-  if(!j||!j.contents)return null;
-  var c;try{c=typeof j.contents==="string"?JSON.parse(j.contents):j.contents;}catch(e){return null;}
+  var c=await get("https://api.allorigins.win/raw?url="+encodeURIComponent(u),8000);
   var m=c&&c.chart&&c.chart.result&&c.chart.result[0]&&c.chart.result[0].meta;
   if(!m||m.regularMarketPrice==null)return null;
   var px=+m.regularMarketPrice, prev=+(m.previousClose||m.chartPreviousClose||px);
@@ -205,15 +203,17 @@ async function yq(sym){
 }
 function named(q,name){if(!q)return null;q.name=name;return q;}
 async function macro(){
-  var us100=await okx("US100-USDT-SWAP");
-  var us500=await okx("US500-USDT-SWAP");
-  var jp=await okx("JP225-USDT-SWAP");
+  var yP=Promise.all([yq("NQ=F"),yq("^IXIC"),yq("^NDX"),yq("^GSPC"),yq("^FTSE"),yq("^GDAXI"),yq("^N225"),yq("^HSI")]);
+  var oP=Promise.all([okx("US100-USDT-SWAP"),okx("US500-USDT-SWAP"),okx("JP225-USDT-SWAP")]);
+  var o=await oP;
   S.idx=S.idx||{};
-  if(us100){S.mac.nq=us100;S.mac.nd=us100;if(!S.mac.ix)S.mac.ix=us100;S.idx.nas=named({px:us100.px,chg:us100.chg},"Nasdaq");S.mac.hN.push(us100.px);if(S.mac.hN.length>40)S.mac.hN.shift();}
-  if(us500)S.idx.spx=named(us500,"S&P 500");
-  if(jp)S.idx.nky=named(jp,"Nikkei");
+  if(o[0]){S.mac.nq=o[0];S.mac.nd=o[0];if(!S.mac.ix)S.mac.ix=o[0];S.idx.nas=named({px:o[0].px,chg:o[0].chg},"Nasdaq");S.mac.hN.push(o[0].px);if(S.mac.hN.length>40)S.mac.hN.shift();}
+  if(o[1]){S.mac.sp=o[1];S.idx.spx=named(o[1],"S&P 500");}
+  if(o[2])S.idx.nky=named(o[2],"Nikkei");
+  if(S.live.btc.px){S.mac.hB.push(S.live.btc.px);if(S.mac.hB.length>40)S.mac.hB.shift();}
+  if(S.live.xau.px){S.mac.hX.push(S.live.xau.px);if(S.mac.hX.length>40)S.mac.hX.shift();}
   tape();if(S.tab==="desk"||S.tab==="setup")paint();
-  var y=await Promise.all([yq("NQ=F"),yq("^IXIC"),yq("^NDX"),yq("^GSPC"),yq("^FTSE"),yq("^GDAXI"),yq("^N225"),yq("^HSI")]);
+  var y=await yP;
   if(y[0])S.mac.nq=y[0];
   if(y[1]){S.mac.ix=y[1];S.idx.nas=named(y[1],"Nasdaq");}
   if(y[2])S.mac.nd=y[2];
@@ -222,8 +222,6 @@ async function macro(){
   if(y[5])S.idx.dax=named(y[5],"DAX");
   if(y[6])S.idx.nky=named(y[6],"Nikkei 225");
   if(y[7])S.idx.hsi=named(y[7],"Hang Seng");
-  if(S.live.btc.px){S.mac.hB.push(S.live.btc.px);if(S.mac.hB.length>40)S.mac.hB.shift();}
-  if(S.live.xau.px){S.mac.hX.push(S.live.xau.px);if(S.mac.hX.length>40)S.mac.hX.shift();}
   tape();if(S.tab==="desk"||S.tab==="setup")paint();
 }
 async function runOne(id,mode){
