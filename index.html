@@ -384,7 +384,7 @@ function setup(){
   var a=p.a,g=p.g,I=tapeIst();
   var head=g.ok?g.g+" SETUP · "+(a.dir||"").toUpperCase():"STAND DOWN";
   var body=g.ok?"Take only if this matches your plan. R:R "+(a.rr||0).toFixed(2)+".":g.r.slice(0,4).join(" · ");
-  var labels={"HTF":"HTF aligned","Mid":"Mid-TF agrees","Level":"At support","Pattern":"Closed reversal","EMA":"EMA stack","RSI":"RSI mid"};
+  var labels={"HTF":"HTF aligned","Mid":"Mid-TF agrees","Swing":"500pt swing","Volume":"Volume active","Pattern":"Closed reversal","EMA":"EMA stack","RSI":"RSI mid"};
   var bars=(a.parts||[]).map(function(x){
     var pct=x[2]?Math.round(100*x[1]/x[2]):0;
     return H('<div style="margin-bottom:10px"><div class="rw" style="font-size:12px"><span>',labels[x[0]]||x[0],'</span><span class="mo mu">',x[1],'/',x[2],'</span></div><div class="bar"><i style="width:',pct,'%;background:',x[1]===x[2]?"var(--up)":x[1]?"var(--ac)":"var(--su)",'"></i></div></div>');
