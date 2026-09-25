@@ -140,31 +140,40 @@ function analyze(ex,cx,md,px){
   var cl=ex.map(function(k){return k.c;});var e20=ema(cl,20),e50=ema(cl,50),rs=rsi(cl,14);
   var a20=e20[e20.length-1],a50=e50[e50.length-1],stk=px>a20&&a20>a50?1:(px<a20&&a20<a50?-1:0);
   var a=atr(ex),dir=p?p.d:(tE==="UP"?"long":tE==="DOWN"?"short":null);
-  var nS=!!(lv.sup&&Math.abs(px-lv.sup)/px<0.0035),nR=!!(lv.res&&Math.abs(px-lv.res)/px<0.0035);
+  var nS=!!(lv.sup&&Math.abs(px-lv.sup)/px<0.008),nR=!!(lv.res&&Math.abs(px-lv.res)/px<0.008);
+  var closed=ex.slice(Math.max(0,ex.length-13),ex.length-1),rng=0,volOk=0;
+  if(closed.length>=8&&px){
+    var hi=-1e18,lo=1e18,sv=0,i;
+    for(i=0;i<closed.length;i++){if(closed[i].h>hi)hi=closed[i].h;if(closed[i].l<lo)lo=closed[i].l;sv+=closed[i].v||0;}
+    rng=hi-lo;
+    var lastv=closed[closed.length-1].v||0,avg=sv/closed.length;
+    volOk=avg>0&&lastv>=avg*1.15;
+  }
+  var hot=!!(px&&rng/px>=0.004&&rng/px<=0.03);
+  var htf=(dir==="long"&&tC==="UP")||(dir==="short"&&tC==="DOWN");
+  var mid=(dir==="long"&&tM==="UP")||(dir==="short"&&tM==="DOWN");
+  var at=(dir==="long"&&nS)||(dir==="short"&&nR);
+  var emaOk=(dir==="long"&&stk===1)||(dir==="short"&&stk===-1);
+  var rsiOk=rs>35&&rs<65;
   var scn=0;function add(ok,pts){if(ok)scn+=pts;}
-  add((dir==="long"&&tC==="UP")||(dir==="short"&&tC==="DOWN"),20);
-  add((dir==="long"&&tM==="UP")||(dir==="short"&&tM==="DOWN"),12);
-  add((dir==="long"&&nS)||(dir==="short"&&nR),16);
-  add(!!p,p&&((p.d==="long"&&nS)||(p.d==="short"&&nR))?16:5);
-  add((dir==="long"&&stk===1)||(dir==="short"&&stk===-1),8);
-  add(rs>35&&rs<65,8);add(a/px>0.0005&&a/px<0.016,8);
+  add(htf,20);add(mid,12);add(at,8);add(!!p,16);add(hot,16);add(volOk,8);add(emaOk,8);add(rsiOk,8);
   var ent=dir?px:null,sl=null,tp=null,rr=null;
-  if(dir&&ent!=null){var risk=a*1.15;if(dir==="long"){sl=ent-risk;tp=lv.res&&lv.res-ent>0?lv.res:ent+risk*2;rr=(tp-ent)/(ent-sl||1e-9);}else{sl=ent+risk;tp=lv.sup&&ent-lv.sup>0?lv.sup:ent-risk*2;rr=(ent-tp)/(sl-ent||1e-9);}}
-  var pts=[["HTF",(dir==="long"&&tC==="UP")||(dir==="short"&&tC==="DOWN")?20:0,20],["Mid",(dir==="long"&&tM==="UP")||(dir==="short"&&tM==="DOWN")?12:0,12],["Level",(dir==="long"&&nS)||(dir==="short"&&nR)?16:0,16],["Pattern",p?12:0,16],["EMA",(dir==="long"&&stk===1)||(dir==="short"&&stk===-1)?8:0,8],["RSI",rs>35&&rs<65?8:0,8]];
-  return {px:px,dir:dir,score:scn,tC:tC,tM:tM,rsi:rs,ent:ent,sl:sl,tp:tp,rr:rr,pat:p?p.n:null,parts:pts,reg:tE==="RANGE"?"RANGE":"TREND"};
+  if(dir&&ent!=null){var risk=Math.max(a*1.15,px*0.004);if(dir==="long"){sl=ent-risk;tp=lv.res&&lv.res-ent>risk?lv.res:ent+risk*2;rr=(tp-ent)/(ent-sl||1e-9);}else{sl=ent+risk;tp=lv.sup&&ent-lv.sup>risk?lv.sup:ent-risk*2;rr=(ent-tp)/(sl-ent||1e-9);}}
+  var pts=[["HTF",htf?20:0,20],["Mid",mid?12:0,12],["Swing",hot?16:0,16],["Volume",volOk?8:0,8],["Pattern",p?16:0,16],["EMA",emaOk?8:0,8],["RSI",rsiOk?8:0,8]];
+  return {px:px,dir:dir,score:scn,tC:tC,tM:tM,rsi:rs,ent:ent,sl:sl,tp:tp,rr:rr,pat:p?p.n:null,parts:pts,reg:tE==="RANGE"?"RANGE":"TREND",hot:hot};
 }
 function nqC(id,dir){var n=S.mac.nq;if(!n||!dir||id==="xau")return "n/a";if(dir==="long"&&n.chg<=-0.35)return "diverge";if(dir==="short"&&n.chg>=0.35)return "diverge";if((dir==="long"&&n.chg>=0.1)||(dir==="short"&&n.chg<=-0.1))return "agree";return "n";}
 function gate(a,id){
-  var r=[],I=ist();
-  if(!a.dir)r.push("no direction");if(a.score<78)r.push("score < 78");if(a.rr==null||a.rr<1.8)r.push("R:R < 1.8");
+  var r=[],I=ist(),need=a.hot?70:78,needR=a.hot?1.5:1.8;
+  if(!a.dir)r.push("no direction");if(a.score<need)r.push("score < "+need);if(a.rr==null||a.rr<needR)r.push("R:R < "+needR);
   if((a.dir==="long"&&a.tC==="DOWN")||(a.dir==="short"&&a.tC==="UP"))r.push("against HTF");
-  if(a.tC==="RANGE")r.push("HTF range");
-  if((a.dir==="long"&&a.tM!=="UP")||(a.dir==="short"&&a.tM!=="DOWN"))r.push("mid-TF off");
+  if(a.tC==="RANGE"&&!a.hot)r.push("HTF range");
+  if(!a.pat)r.push("no closed reversal");
   if(id==="xau"&&!goldOk())r.push("gold off hours");
   if(I.risk==="thin")r.push("thin overnight");
   var nc=nqC(id,a.dir);if(nc==="diverge"&&id!=="xau")r.push("NQ diverges");
   if(r.length)return {ok:0,g:"WAIT",r:r};
-  var Aplus=a.score>=88&&(a.rr||0)>=2&&!!a.pat&&I.risk!=="thin"&&nc!=="diverge";
+  var Aplus=a.score>=88&&(a.rr||0)>=2&&!!a.pat&&a.tC!=="RANGE"&&I.risk!=="thin"&&nc!=="diverge";
   return {ok:1,g:Aplus?"A":"B",r:[]};
 }
 function pearson(a,b){
