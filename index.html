@@ -160,18 +160,18 @@ function analyze(ex,cx,md,px){
   var sig=ex[ex.length-2]||last;
   var ent=dir?px:null,sl=null,tp=null,rr=null;
   if(dir&&ent!=null){
-    var risk=Math.max(a*1.15,px*0.004),buf=Math.max(a*0.2,px*0.0005);
+    var buf=Math.max((sig.h-sig.l)*0.15,px*0.0004);
     if(dir==="long"){
-      sl=Math.min(ent-risk,(sig.l||ent)-buf);
-      if(!(sl<ent))sl=ent-risk;
+      sl=(sig.l||ent)-buf;
+      if(!(sl<ent))sl=ent-buf;
       var dist=ent-sl;
-      tp=lv.res&&lv.res-ent>dist?lv.res:ent+dist*2;
+      tp=lv.res&&(lv.res-ent)>dist&&(lv.res-ent)<dist*2.5?lv.res:ent+dist*2;
       rr=(tp-ent)/dist;
     }else{
-      sl=Math.max(ent+risk,(sig.h||ent)+buf);
-      if(!(sl>ent))sl=ent+risk;
+      sl=(sig.h||ent)+buf;
+      if(!(sl>ent))sl=ent+buf;
       var distS=sl-ent;
-      tp=lv.sup&&ent-lv.sup>distS?lv.sup:ent-distS*2;
+      tp=lv.sup&&(ent-lv.sup)>distS&&(ent-lv.sup)<distS*2.5?lv.sup:ent-distS*2;
       rr=(ent-tp)/distS;
     }
   }
