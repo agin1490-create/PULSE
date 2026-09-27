@@ -201,15 +201,25 @@ function pearson(a,b){
 }
 function bars(arr){return (arr||[]).map(function(k){return {t:+k[0],o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]};}).sort(function(a,b){return a.t-b.t;});}
 async function kl(sym,tf){
-  var pair=sym==="XAUTUSDT"?"PAXGUSDT":sym;
-  var vis=await get("https://data-api.binance.vision/api/v3/klines?symbol="+pair+"&interval="+tf+"&limit=160",8000);
+  if(tf==="10m"){var m=await kl(sym,"1m");return fold(m,600000);}
+  var pair=sym==="XAUTUSDT"?"PAXGUSDT":sym,lim=tf==="1m"?1000:160;
+  var vis=await get("https://data-api.binance.vision/api/v3/klines?symbol="+pair+"&interval="+tf+"&limit="+lim,8000);
   if(Array.isArray(vis)&&vis.length)return bars(vis);
-  var bn=await get("https://api.binance.com/api/v3/klines?symbol="+pair+"&interval="+tf+"&limit=160",8000);
+  var bn=await get("https://api.binance.com/api/v3/klines?symbol="+pair+"&interval="+tf+"&limit="+lim,8000);
   if(Array.isArray(bn)&&bn.length)return bars(bn);
-  var map={"5m":"5","15m":"15","1h":"60","4h":"240"};
-  var bb=await get("https://api.bybit.com/v5/market/kline?category=spot&symbol="+sym+"&interval="+(map[tf]||"5")+"&limit=160",8000);
+  var map={"1m":"1","3m":"3","5m":"5","15m":"15","1h":"60","4h":"240"};
+  var bb=await get("https://api.bybit.com/v5/market/kline?category=spot&symbol="+sym+"&interval="+(map[tf]||"3")+"&limit="+lim,8000);
   if(bb&&bb.result&&bb.result.list&&bb.result.list.length)return bars(bb.result.list);
   return [];
+}
+function fold(rows,ms){
+  var out=[],b=null,i;
+  for(i=0;i<rows.length;i++){
+    var k=rows[i],t=Math.floor(k.t/ms)*ms;
+    if(!b||b.t!==t){b={t:t,o:k.o,h:k.h,l:k.l,c:k.c,v:k.v||0};out.push(b);}
+    else{if(k.h>b.h)b.h=k.h;if(k.l<b.l)b.l=k.l;b.c=k.c;b.v+=(k.v||0);}
+  }
+  return out;
 }
 async function okx(inst){
   var j=await get("https://www.okx.com/api/v5/market/ticker?instId="+inst,7000);
