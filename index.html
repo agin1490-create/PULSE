@@ -261,10 +261,9 @@ async function macro(){
 }
 async function runOne(id,mode){
   var spec=A.filter(function(x){return x.id===id;})[0];
-  var exT=mode==="m15"?"15m":"5m",cxT=mode==="m15"?"4h":"1h",mdT=mode==="m15"?"1h":"15m";
-  var ex=await kl(spec.bb,exT),cx=await kl(spec.bb,cxT),md=await kl(spec.bb,mdT);
+  var var ex=await kl(spec.bb,"3m"),cx=await kl(spec.bb,"10m");
   if(!ex.length||!cx.length)throw 0;
-  var a=analyze(ex,cx,md,S.live[id].px||undefined);
+  var a=analyze(ex,cx,ex,S.live[id].px||undefined);
   return {a:a,g:gate(a,id)};
 }
 async function goldPx(){
