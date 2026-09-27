@@ -157,8 +157,24 @@ function analyze(ex,cx,md,px){
   var rsiOk=rs>35&&rs<65;
   var scn=0;function add(ok,pts){if(ok)scn+=pts;}
   add(htf,20);add(mid,12);add(at,8);add(!!p,16);add(hot,16);add(volOk,8);add(emaOk,8);add(rsiOk,8);
+  var sig=ex[ex.length-2]||last;
   var ent=dir?px:null,sl=null,tp=null,rr=null;
-  if(dir&&ent!=null){var risk=Math.max(a*1.15,px*0.004);if(dir==="long"){sl=ent-risk;tp=lv.res&&lv.res-ent>risk?lv.res:ent+risk*2;rr=(tp-ent)/(ent-sl||1e-9);}else{sl=ent+risk;tp=lv.sup&&ent-lv.sup>risk?lv.sup:ent-risk*2;rr=(ent-tp)/(sl-ent||1e-9);}}
+  if(dir&&ent!=null){
+    var risk=Math.max(a*1.15,px*0.004),buf=Math.max(a*0.2,px*0.0005);
+    if(dir==="long"){
+      sl=Math.min(ent-risk,(sig.l||ent)-buf);
+      if(!(sl<ent))sl=ent-risk;
+      var dist=ent-sl;
+      tp=lv.res&&lv.res-ent>dist?lv.res:ent+dist*2;
+      rr=(tp-ent)/dist;
+    }else{
+      sl=Math.max(ent+risk,(sig.h||ent)+buf);
+      if(!(sl>ent))sl=ent+risk;
+      var distS=sl-ent;
+      tp=lv.sup&&ent-lv.sup>distS?lv.sup:ent-distS*2;
+      rr=(ent-tp)/distS;
+    }
+  }
   var pts=[["HTF",htf?20:0,20],["Mid",mid?12:0,12],["Swing",hot?16:0,16],["Volume",volOk?8:0,8],["Pattern",p?16:0,16],["EMA",emaOk?8:0,8],["RSI",rsiOk?8:0,8]];
   return {px:px,dir:dir,score:scn,tC:tC,tM:tM,rsi:rs,ent:ent,sl:sl,tp:tp,rr:rr,pat:p?p.n:null,parts:pts,reg:tE==="RANGE"?"RANGE":"TREND",hot:hot};
 }
