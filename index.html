@@ -403,7 +403,7 @@ function ring(score){
 function setup(){
   S.mode=S.mode||"m5";
   var segs=A.map(function(s){return H("<button data-sid='",s.id,"' class='",S.sid===s.id?"on":"","'>",s.sym,"</button>");}).join("");
-  var modes=H("<button data-md='m5' class='",S.mode==="m5"?"on":"","'>5m / 1h</button><button data-md='m15' class='",S.mode==="m15"?"on":"","'>15m / 4h</button>");
+  var modes=H("<button class='on'>3m / 10m</button>");
   var p=S.setup;
   if(!p)return H('<p class="se mo">Setup analyser</p><div class="sg">',segs,'</div><div class="sg">',modes,'</div><p class="mu">Reading closed candles…</p>');
   var a=p.a,g=p.g,I=tapeIst();
